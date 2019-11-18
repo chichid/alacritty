@@ -223,15 +223,15 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_tab(&mut self) {
-        self.terminal_tab_collection.push_term_tab();
+        self.terminal_tab_collection.push_tab();
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.terminal_tab_collection.activate_term_tab(tab_id);
+        self.terminal_tab_collection.activate_tab(tab_id);
     }
 
     fn close_current_tab(&mut self) {
-        // TODO implement
+        self.terminal_tab_collection.close_current_tab();
     }
 
     fn close_tab(&mut self, tab_id: usize) {
@@ -372,7 +372,15 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
-                    *control_flow = ControlFlow::Exit;
+                    // Kill the current terminal
+                    if !self.terminal_tab_collection.is_empty() {
+                        self.terminal_tab_collection.close_current_tab();
+                    }
+
+                    // Exit if the user have closed the last 
+                    if self.terminal_tab_collection.is_empty() {
+                        *control_flow = ControlFlow::Exit;
+                    }
                     return;
                 },
                 // Process events
@@ -393,7 +401,11 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
                 },
             }
 
-            let active_term_mutex = self.terminal_tab_collection.get_active_term().clone();
+            if self.terminal_tab_collection.is_empty() {
+                return;
+            }
+
+            let active_term_mutex = self.terminal_tab_collection.get_active_tab().clone();
             let mut terminal_ctx = active_term_mutex.lock();
             let terminal_arc = terminal_ctx.terminal.clone();
             let mut terminal = terminal_arc.lock();
@@ -421,6 +433,11 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
 
             for event in event_queue.drain(..) {
                 Processor::handle_event(event, &mut processor);
+            }
+
+            if self.terminal_tab_collection.is_empty() {
+                *control_flow = ControlFlow::Exit;
+                return;
             }
 
             // Commit any changes to the tab collection made by the action handling
@@ -461,7 +478,7 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
             // TODO there has to be a cleaner way to reuse the same condition above
             // If the terminal collection changed, make sure we draw the active temrinal
             if is_tab_collection_dirty { 
-                let active_term_mutex = self.terminal_tab_collection.get_active_term().clone();
+                let active_term_mutex = self.terminal_tab_collection.get_active_tab().clone();
                 let terminal_ctx = active_term_mutex.lock();
                 let terminal_arc = terminal_ctx.terminal.clone();
                 let terminal = terminal_arc.lock();
@@ -531,7 +548,10 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
             GlutinEvent::WindowEvent { event, window_id, .. } => {
                 use glutin::event::WindowEvent::*;
                 match event {
-                    CloseRequested => processor.ctx.terminal.exit(),
+                    CloseRequested => {
+                        processor.ctx.terminal_tab_collection.close_all_tabs();
+                        processor.ctx.terminal.exit();
+                    },
                     Resized(lsize) => {
                         let psize = lsize.to_physical(processor.ctx.size_info.dpr);
                         processor.ctx.display_update_pending.dimensions = Some(psize);

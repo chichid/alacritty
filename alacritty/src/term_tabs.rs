@@ -13,20 +13,22 @@ use crate::config::Config;
 
 pub struct TermTabCollection<T> {
     event_proxy: T,
-    active_term: usize,
+    active_tab: usize,
     term_collection: Vec<Arc<FairMutex<TermTab<T>>>>,
-    pending_add_term: usize,
-    pending_active_term: usize,
+    pending_tab_to_add: usize,
+    pending_tab_activate: usize,
+    pending_commit_delete_tab: bool,
 }
 
 impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
     pub fn new(event_proxy: T) -> TermTabCollection<T> {
         TermTabCollection {
             event_proxy: event_proxy.clone(),
-            active_term: 0,
+            active_tab: 0,
             term_collection: Vec::new(),
-            pending_add_term: 0,
-            pending_active_term: 0
+            pending_tab_to_add: 0,
+            pending_tab_activate: 0,
+            pending_commit_delete_tab: false
         }
     }
 
@@ -45,45 +47,76 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         };
 
         // Add the intiial terminal
-        self.push_term_tab();
-        self.activate_term_tab(0);
+        self.push_tab();
+        self.activate_tab(0);
         self.commit_changes(config, dummy_display_size_info);
     }
-    
-    pub fn get_active_term(&self) -> &Arc<FairMutex<TermTab<T>>> {
-        &self.term_collection[self.active_term]
+
+    pub fn is_empty(&self) -> bool {
+        self.term_collection.is_empty()
     }
 
-    pub fn activate_term_tab(&mut self, term_id: usize) {
-        self.pending_active_term = term_id;
+    pub fn get_active_tab(&self) -> &Arc<FairMutex<TermTab<T>>> {
+        &self.term_collection[self.active_tab]
     }
 
-    pub fn push_term_tab(&mut self) -> usize {
-        let new_term_id = self.term_collection.len() + self.pending_add_term;        
-        self.pending_add_term += 1;
+    pub fn activate_tab(&mut self, tab_id: usize) {
+        self.pending_tab_activate = tab_id;
+    }
 
-        self.activate_term_tab(new_term_id);
+    pub fn close_all_tabs(&mut self) {
+        self.term_collection.clear();
+        self.pending_commit_delete_tab = true;
+    }
 
-        new_term_id
+    pub fn close_current_tab(&mut self) {
+        self.close_tab(self.active_tab);
+        self.activate_tab(self.active_tab);
+    }
+
+    pub fn close_tab(&mut self, tab_id: usize) -> bool {
+        self.term_collection.remove(tab_id);
+
+        if self.active_tab >= self.term_collection.len() && self.active_tab != 0 {
+            self.active_tab = self.term_collection.len() - 1;
+        }
+        
+        self.pending_commit_delete_tab = true;
+
+        self.term_collection.is_empty()
+    }
+
+    pub fn push_tab(&mut self) -> usize {
+        let new_tab_id = self.term_collection.len() + self.pending_tab_to_add;        
+        self.pending_tab_to_add += 1;
+
+        self.activate_tab(new_tab_id);
+
+        new_tab_id
     }
 
     pub fn commit_changes(&mut self, config: &Config, size_info: SizeInfo) -> bool {
         // Add new terminals
         let mut is_dirty = false;
 
-        for _ in 0..self.pending_add_term {
+        for _ in 0..self.pending_tab_to_add {
             let term_context = TermTab::new(config, size_info, self.event_proxy.clone());
             self.term_collection.push(Arc::new(FairMutex::new(term_context)));
             is_dirty = true;
         }
 
-        self.pending_add_term = 0;
+        self.pending_tab_to_add = 0;
 
         // Activate the terminal id needed
-        if self.pending_active_term != self.active_term && self.pending_active_term < self.term_collection.len() {
-            println!("Activitng term {:?}", self.pending_active_term);
-            self.active_term = self.pending_active_term;
+        if self.pending_tab_activate != self.active_tab && self.pending_tab_activate < self.term_collection.len() {
+            self.active_tab = self.pending_tab_activate;
             is_dirty = true;
+        }
+
+        // Commit delete changes 
+        if self.pending_commit_delete_tab {
+            is_dirty = true;
+            self.pending_commit_delete_tab = false;
         }
 
         is_dirty
