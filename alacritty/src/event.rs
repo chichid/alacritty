@@ -1,4 +1,5 @@
 //! Process window events
+use alacritty_terminal::event_loop::Notifier;
 use std::borrow::Cow;
 use std::cmp::max;
 use std::env;
@@ -6,7 +7,6 @@ use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::sync::Arc;
 use std::time::Instant;
 
 use glutin::dpi::PhysicalSize;
@@ -21,13 +21,11 @@ use font::Size;
 use alacritty_terminal::clipboard::ClipboardType;
 use alacritty_terminal::config::Font;
 use alacritty_terminal::config::LOG_TARGET_CONFIG;
-use alacritty_terminal::event::OnResize;
 use alacritty_terminal::event::{Event, EventListener, Notify};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::message_bar::{Message, MessageBuffer};
 use alacritty_terminal::selection::Selection;
-use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Cell;
 use alacritty_terminal::term::{SizeInfo, Term};
 #[cfg(not(windows))]
@@ -37,8 +35,9 @@ use alacritty_terminal::util::{limit, start_daemon};
 use crate::config;
 use crate::config::Config;
 use crate::display::Display;
-use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
+use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
+use crate::term_tabs::TermTabCollection;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -56,6 +55,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
+    pub terminal_tab_collection: &'a mut TermTabCollection<T>,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -68,7 +68,7 @@ pub struct ActionContext<'a, N, T> {
     font_size: &'a mut Size,
 }
 
-impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionContext<'a, N, T> {
+impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::ActionContext<T> for ActionContext<'a, N, T> {
     fn write_to_pty<B: Into<Cow<'static, [u8]>>>(&mut self, val: B) {
         self.notifier.notify(val);
     }
@@ -222,6 +222,26 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         }
     }
 
+    fn spawn_new_tab(&mut self) {
+        self.terminal_tab_collection.push_term_tab();
+    }
+
+    fn activate_tab(&mut self, tab_id: usize) {
+        self.terminal_tab_collection.activate_term_tab(tab_id);
+    }
+
+    fn close_current_tab(&mut self) {
+        // TODO implement
+    }
+
+    fn close_tab(&mut self, tab_id: usize) {
+        // TODO implement
+    }
+
+    fn move_tab(&mut self, from: usize, to: usize) {
+        // TODO implement
+    }
+
     fn change_font_size(&mut self, delta: f32) {
         *self.font_size = max(*self.font_size + delta, Size::new(FONT_SIZE_STEP));
         let font = self.config.font.clone().with_size(*self.font_size);
@@ -301,47 +321,44 @@ impl Default for Mouse {
 ///
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
-pub struct Processor<N> {
-    notifier: N,
+pub struct Processor<T: 'static +  EventListener> {
+    terminal_tab_collection: TermTabCollection<T>,
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
     modifiers: ModifiersState,
     config: Config,
-    pty_resize_handle: Box<dyn OnResize>,
     message_buffer: MessageBuffer,
     display: Display,
     font_size: Size,
 }
 
-impl<N: Notify> Processor<N> {
+impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
     /// Create a new event processor
     ///
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        notifier: N,
-        pty_resize_handle: Box<dyn OnResize>,
+        terminal_tab_collection: TermTabCollection<T>,
         message_buffer: MessageBuffer,
         config: Config,
         display: Display,
-    ) -> Processor<N> {
+    ) -> Processor<T> {
         Processor {
-            notifier,
+            terminal_tab_collection,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
             modifiers: Default::default(),
             font_size: config.font.size,
             config,
-            pty_resize_handle,
             message_buffer,
             display,
         }
     }
 
     /// Run the event loop.
-    pub fn run<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, mut event_loop: EventLoop<Event>)
+    pub fn run(&mut self, mut event_loop: EventLoop<Event>)
     where
         T: EventListener,
     {
@@ -376,13 +393,17 @@ impl<N: Notify> Processor<N> {
                 },
             }
 
-            let mut terminal = terminal.lock();
+            let active_term_mutex = self.terminal_tab_collection.get_active_term().clone();
+            let mut terminal_ctx = active_term_mutex.lock();
+            let terminal_arc = terminal_ctx.terminal.clone();
+            let mut terminal = terminal_arc.lock();
 
             let mut display_update_pending = DisplayUpdate::default();
 
             let context = ActionContext {
+                terminal_tab_collection: &mut self.terminal_tab_collection,
                 terminal: &mut terminal,
-                notifier: &mut self.notifier,
+                notifier: terminal_ctx.notifier.as_mut(),
                 mouse: &mut self.mouse,
                 size_info: &mut self.display.size_info,
                 received_count: &mut self.received_count,
@@ -394,6 +415,7 @@ impl<N: Notify> Processor<N> {
                 font_size: &mut self.font_size,
                 config: &mut self.config,
             };
+
             let mut processor =
                 input::Processor::new(context, &self.display.urls, &self.display.highlighted_url);
 
@@ -401,11 +423,17 @@ impl<N: Notify> Processor<N> {
                 Processor::handle_event(event, &mut processor);
             }
 
-            // Process DisplayUpdate events
+            // Commit any changes to the tab collection made by the action handling
+            let is_tab_collection_dirty = self.terminal_tab_collection.commit_changes(
+                &self.config, 
+                self.display.size_info
+            );
+
+            // Process resize events
             if !display_update_pending.is_empty() {
                 self.display.handle_update(
                     &mut terminal,
-                    self.pty_resize_handle.as_mut(),
+                    terminal_ctx.resize_handle.as_mut(),
                     &self.message_buffer,
                     &self.config,
                     display_update_pending,
@@ -429,18 +457,37 @@ impl<N: Notify> Processor<N> {
                     self.modifiers,
                 );
             }
+
+            // TODO there has to be a cleaner way to reuse the same condition above
+            // If the terminal collection changed, make sure we draw the active temrinal
+            if is_tab_collection_dirty { 
+                let active_term_mutex = self.terminal_tab_collection.get_active_term().clone();
+                let terminal_ctx = active_term_mutex.lock();
+                let terminal_arc = terminal_ctx.terminal.clone();
+                let terminal = terminal_arc.lock();
+
+                // Redraw screen
+                self.display.draw(
+                    terminal,
+                    &self.message_buffer,
+                    &self.config,
+                    &self.mouse,
+                    self.modifiers,
+                );
+            } 
         });
 
         // Write ref tests to disk
-        self.write_ref_test_results(&terminal.lock());
+        // TODO - Loop through all the terminals in the terminal collection and write refs to disk
+        // self.write_ref_test_results(&terminal.lock());
     }
 
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T>(
+    fn handle_event(
         event: GlutinEvent<Event>,
-        processor: &mut input::Processor<T, ActionContext<N, T>>,
+        processor: &mut input::Processor<T, ActionContext<Notifier, T>>,
     ) where
         T: EventListener,
     {
@@ -534,6 +581,8 @@ impl<N: Notify> Processor<N> {
                         }
                     },
                     DroppedFile(path) => {
+                        // TODO not sure why I need to import the ActionContext here
+                        use crate::input::ActionContext;
                         let path: String = path.to_string_lossy().into();
                         processor.ctx.write_to_pty(path.into_bytes());
                     },
@@ -623,7 +672,7 @@ impl<N: Notify> Processor<N> {
     }
 
     // Write the ref test results to the disk
-    pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
+    pub fn write_ref_test_results(&self, terminal: &Term<T>) {
         if !self.config.debug.ref_test {
             return;
         }

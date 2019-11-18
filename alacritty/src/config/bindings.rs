@@ -176,6 +176,21 @@ pub enum Action {
     /// Spawn a new instance of Alacritty.
     SpawnNewInstance,
 
+    /// Spawn a new tab inside an alacritty terminal
+    SpawnNewTab,
+
+    /// Activate Tab
+    ActivateTab(usize),
+
+    /// Activate Tab
+    CloseCurrentTab,
+
+    /// Activate Tab
+    CloseTab(usize),
+
+    /// Activate Tab
+    MoveTab(usize, usize),
+
     /// Toggle fullscreen.
     ToggleFullscreen,
 
@@ -412,8 +427,37 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
     }
 
     bindings.extend(platform_key_bindings());
+    bindings.extend(default_term_tabs_key_bindings());
 
     bindings
+}
+
+fn default_term_tabs_key_bindings() -> Vec<KeyBinding> {
+    // By Default, using ctrl+T, this can be changed from here
+    let use_alt = false;
+    let use_ctrl = true;
+    let use_logo = false;
+
+    // On mac, using logo+T
+    #[cfg(all(target_os = "macos"))] {
+        let use_logo = true;
+        let use_alt = false;
+        let use_ctrl = false;
+    }
+
+    bindings!(
+        KeyBinding;
+        Key::T, [alt: use_alt, ctrl: use_ctrl] ; Action::SpawnNewTab;
+        Key::W, [alt: use_alt, ctrl: use_ctrl] ; Action::CloseCurrentTab;
+        Key::Key1, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(0);
+        Key::Key2, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(1);
+        Key::Key3, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(2);
+        Key::Key4, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(3);
+        Key::Key5, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(4);
+        Key::Key7, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(5);
+        Key::Key8, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(6);
+        Key::Key9, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(7);
+    )
 }
 
 #[cfg(not(any(target_os = "macos", test)))]

@@ -83,6 +83,11 @@ pub trait ActionContext<T: EventListener> {
     fn terminal(&self) -> &Term<T>;
     fn terminal_mut(&mut self) -> &mut Term<T>;
     fn spawn_new_instance(&mut self);
+    fn spawn_new_tab(&mut self);
+    fn activate_tab(&mut self, tab_id: usize);
+    fn close_current_tab(&mut self);
+    fn close_tab(&mut self, tab_id: usize);
+    fn move_tab(&mut self, from: usize, to: usize);
     fn change_font_size(&mut self, delta: f32);
     fn reset_font_size(&mut self);
     fn pop_message(&mut self);
@@ -150,6 +155,11 @@ impl<T: EventListener> Execute<T> for Action {
             Action::ClearHistory => ctx.terminal_mut().clear_screen(ClearMode::Saved),
             Action::ClearLogNotice => ctx.pop_message(),
             Action::SpawnNewInstance => ctx.spawn_new_instance(),
+            Action::SpawnNewTab => ctx.spawn_new_tab(),
+            Action::ActivateTab(ref t) => ctx.activate_tab(*t),
+            Action::CloseCurrentTab => ctx.close_current_tab(),
+            Action::CloseTab(ref t) => ctx.close_tab(*t),
+            Action::MoveTab(ref from, ref to) => ctx.move_tab(*from, *to),
             Action::ReceiveChar | Action::None => (),
         }
     }

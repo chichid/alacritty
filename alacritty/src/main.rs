@@ -29,7 +29,6 @@ use std::fs;
 use std::io::{self, Write};
 #[cfg(not(windows))]
 use std::os::unix::io::AsRawFd;
-use std::sync::Arc;
 
 #[cfg(target_os = "macos")]
 use dirs;
@@ -38,15 +37,11 @@ use log::info;
 #[cfg(windows)]
 use winapi::um::wincon::{AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS};
 
-use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::event::Event;
-use alacritty_terminal::event_loop::{self, EventLoop, Msg};
 #[cfg(target_os = "macos")]
 use alacritty_terminal::locale;
 use alacritty_terminal::message_bar::MessageBuffer;
 use alacritty_terminal::panic;
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::Term;
 use alacritty_terminal::tty;
 
 mod cli;
@@ -57,6 +52,7 @@ mod input;
 mod logging;
 mod url;
 mod window;
+mod term_tabs;
 
 use crate::cli::Options;
 use crate::config::monitor::Monitor;
@@ -132,58 +128,17 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
 
     let event_proxy = EventProxy::new(window_event_loop.create_proxy());
 
+    // Create a terminal tab collection
+    // 
+    // The tab collection is a collection of TerminalTab that holds the state of all tabs 
+    let mut terminal_tab_collection = term_tabs::TermTabCollection::new(event_proxy.clone());
+    terminal_tab_collection.initialize(&config);
+
     // Create a display
     //
     // The display manages a window and can draw the terminal.
     let display = Display::new(&config, &window_event_loop)?;
-
     info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
-
-    // Create new native clipboard
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let clipboard = Clipboard::new(display.window.wayland_display());
-    #[cfg(any(target_os = "macos", windows))]
-    let clipboard = Clipboard::new();
-
-    // Create the terminal
-    //
-    // This object contains all of the state about what's being displayed. It's
-    // wrapped in a clonable mutex since both the I/O loop and display need to
-    // access it.
-    let terminal = Term::new(&config, &display.size_info, clipboard, event_proxy.clone());
-    let terminal = Arc::new(FairMutex::new(terminal));
-
-    // Create the pty
-    //
-    // The pty forks a process to run the shell on the slave side of the
-    // pseudoterminal. A file descriptor for the master side is retained for
-    // reading/writing to the shell.
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let pty = tty::new(&config, &display.size_info, display.window.x11_window_id());
-    #[cfg(any(target_os = "macos", windows))]
-    let pty = tty::new(&config, &display.size_info, None);
-
-    // Create PTY resize handle
-    //
-    // This exists because rust doesn't know the interface is thread-safe
-    // and we need to be able to resize the PTY from the main thread while the IO
-    // thread owns the EventedRW object.
-    #[cfg(windows)]
-    let resize_handle = pty.resize_handle();
-    #[cfg(not(windows))]
-    let resize_handle = pty.fd.as_raw_fd();
-
-    // Create the pseudoterminal I/O loop
-    //
-    // pty I/O is ran on another thread as to not occupy cycles used by the
-    // renderer and input processing. Note that access to the terminal state is
-    // synchronized since the I/O loop updates the state, and the display
-    // consumes it periodically.
-    let event_loop = EventLoop::new(Arc::clone(&terminal), event_proxy.clone(), pty, &config);
-
-    // The event loop channel allows write requests from the event processor
-    // to be sent to the pty loop and ultimately written to the pty.
-    let loop_tx = event_loop.channel();
 
     // Create a config monitor when config was loaded from path
     //
@@ -200,24 +155,21 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     //
     // Need the Rc<RefCell<_>> here since a ref is shared in the resize callback
     let mut processor = Processor::new(
-        event_loop::Notifier(loop_tx.clone()),
-        Box::new(resize_handle),
+        terminal_tab_collection,
         message_buffer,
         config,
         display,
     );
 
-    // Kick off the I/O thread
-    let io_thread = event_loop.spawn();
-
     info!("Initialisation complete");
 
     // Start event loop and block until shutdown
-    processor.run(terminal, window_event_loop);
+    processor.run(window_event_loop);
 
     // Shutdown PTY parser event loop
-    loop_tx.send(Msg::Shutdown).expect("Error sending shutdown to pty event loop");
-    io_thread.join().expect("join io thread");
+    // TODO cleanup terminal collection
+    // loop_tx.send(Msg::Shutdown).expect("Error sending shutdown to pty event loop");
+    // io_thread.join().expect("join io thread");
 
     // FIXME patch notify library to have a shutdown method
     // config_reloader.join().ok();
