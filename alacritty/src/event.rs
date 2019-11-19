@@ -350,6 +350,7 @@ impl Processor {
     /// Run the event loop.
     pub fn run(&mut self, mut window_event_loop: EventLoop<Event>, event_proxy: &EventProxy) {
         let mut event_queue = Vec::new();
+        let mut pending_display_context_refesh = false;
 
         window_event_loop.run_return(move |event, event_loop, control_flow| {   
             if self.config.debug.print_events {
@@ -440,7 +441,8 @@ impl Processor {
                 return;
             }
             
-            let is_display_context_dirty = match self.display_context_map.commit_changes(
+            terminal.dirty = terminal.dirty || pending_display_context_refesh;
+            pending_display_context_refesh = match self.display_context_map.commit_changes(
                 size_info,
                 &mut term_tab_collection,
                 &self.config, 
@@ -479,24 +481,6 @@ impl Processor {
                     self.modifiers,
                 );
             }
-
-            // TODO there has to be a cleaner way to reuse the same condition above
-            // If the terminal collection changed, make sure we draw the active temrinal
-            if is_display_context_dirty { 
-                let active_term_mutex = term_tab_collection.get_active_tab().clone();
-                let terminal_ctx = active_term_mutex.lock();
-                let terminal_arc = terminal_ctx.terminal.clone();
-                let terminal = terminal_arc.lock();
-
-                // Redraw screen
-                display.draw(
-                    terminal,
-                    &self.message_buffer,
-                    &self.config,
-                    &self.mouse,
-                    self.modifiers,
-                );
-            } 
         });
 
         // Write ref tests to disk
