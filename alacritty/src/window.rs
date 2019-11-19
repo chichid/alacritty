@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+use glutin::event_loop::EventLoopWindowTarget;
 use std::convert::From;
 #[cfg(not(any(target_os = "macos", windows)))]
 use std::ffi::c_void;
@@ -111,7 +112,7 @@ impl From<font::Error> for Error {
 
 fn create_gl_window(
     mut window: WindowBuilder,
-    event_loop: &EventLoop<Event>,
+    event_loop: &EventLoopWindowTarget<Event>,
     srgb: bool,
     dimensions: Option<LogicalSize>,
 ) -> Result<WindowedContext<PossiblyCurrent>> {
@@ -145,7 +146,7 @@ impl Window {
     ///
     /// This creates a window and fully initializes a window.
     pub fn new(
-        event_loop: &EventLoop<Event>,
+        event_loop: &EventLoopWindowTarget<Event>,
         config: &Config,
         logical: Option<LogicalSize>,
     ) -> Result<Window> {
@@ -172,6 +173,10 @@ impl Window {
         }
 
         Ok(Window { current_mouse_cursor, mouse_visible: true, windowed_context })
+    }
+
+    pub fn focus(&mut self) {
+        println!("must implement window focus");
     }
 
     pub fn set_inner_size(&mut self, size: LogicalSize) {

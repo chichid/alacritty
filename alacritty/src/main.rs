@@ -25,6 +25,7 @@
 #[cfg(target_os = "macos")]
 use std::env;
 use std::error::Error;
+use std::sync::Arc;
 use std::fs;
 use std::io::{self, Write};
 #[cfg(not(windows))]
@@ -43,6 +44,7 @@ use alacritty_terminal::locale;
 use alacritty_terminal::message_bar::MessageBuffer;
 use alacritty_terminal::panic;
 use alacritty_terminal::tty;
+use alacritty_terminal::sync::FairMutex;
 
 mod cli;
 mod config;
@@ -52,13 +54,14 @@ mod input;
 mod logging;
 mod url;
 mod window;
+mod display_context;
 mod term_tabs;
 
 use crate::cli::Options;
 use crate::config::monitor::Monitor;
 use crate::config::Config;
-use crate::display::Display;
 use crate::event::{EventProxy, Processor};
+use crate::display_context::DisplayContextMap;
 
 fn main() {
     panic::attach_handler();
@@ -128,17 +131,11 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
 
     let event_proxy = EventProxy::new(window_event_loop.create_proxy());
 
-    // Create a terminal tab collection
-    // 
-    // The tab collection is a collection of TerminalTab that holds the state of all tabs 
-    let mut terminal_tab_collection = term_tabs::TermTabCollection::new(event_proxy.clone());
-    terminal_tab_collection.initialize(&config);
-
-    // Create a display
+    // Create a display context map
     //
-    // The display manages a window and can draw the terminal.
-    let display = Display::new(&config, &window_event_loop)?;
-    info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
+    // The display context map manages the windows and tabs for the entire application
+    let mut display_context_map = DisplayContextMap::new();
+    display_context_map.initialize(&config, &window_event_loop, &event_proxy)?;
 
     // Create a config monitor when config was loaded from path
     //
@@ -155,17 +152,16 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     //
     // Need the Rc<RefCell<_>> here since a ref is shared in the resize callback
     let mut processor = Processor::new(
-        terminal_tab_collection,
+        display_context_map,
         message_buffer,
         config,
-        display,
     );
 
     info!("Initialisation complete");
 
     // Start event loop and block until shutdown
-    processor.run(window_event_loop);
-
+    processor.run(window_event_loop, &event_proxy);
+    
     // Shutdown PTY parser event loop
     // TODO cleanup terminal collection
     // loop_tx.send(Msg::Shutdown).expect("Error sending shutdown to pty event loop");

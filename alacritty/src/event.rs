@@ -1,4 +1,8 @@
 //! Process window events
+use std::sync::Arc;
+use alacritty_terminal::sync::FairMutex;
+use crate::display_context::DisplayContext;
+use crate::display_context::DisplayContextMap;
 use alacritty_terminal::event_loop::Notifier;
 use std::borrow::Cow;
 use std::cmp::max;
@@ -10,6 +14,7 @@ use std::io::Write;
 use std::time::Instant;
 
 use glutin::dpi::PhysicalSize;
+use glutin::event_loop::EventLoop as GlutinEventLoop;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
 use glutin::platform::desktop::EventLoopExtDesktop;
@@ -55,6 +60,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
+    pub display_context_map: &'a mut DisplayContextMap,
     pub terminal_tab_collection: &'a mut TermTabCollection<T>,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
@@ -198,28 +204,7 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        let alacritty = env::args().next().unwrap();
-
-        #[cfg(unix)]
-        let args = {
-            #[cfg(not(target_os = "freebsd"))]
-            let proc_prefix = "";
-            #[cfg(target_os = "freebsd")]
-            let proc_prefix = "/compat/linux";
-            let link_path = format!("{}/proc/{}/cwd", proc_prefix, tty::child_pid());
-            if let Ok(path) = fs::read_link(link_path) {
-                vec!["--working-directory".into(), path]
-            } else {
-                Vec::new()
-            }
-        };
-        #[cfg(not(unix))]
-        let args: Vec<String> = Vec::new();
-
-        match start_daemon(&alacritty, &args) {
-            Ok(_) => debug!("Started new Alacritty process: {} {:?}", alacritty, args),
-            Err(_) => warn!("Unable to start new Alacritty process: {} {:?}", alacritty, args),
-        }
+        self.display_context_map.push_display_context();
     }
 
     fn spawn_new_tab(&mut self) {
@@ -235,12 +220,20 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        // TODO implement
+        self.terminal_tab_collection.close_tab(tab_id);
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
-        // TODO implement
+        // TODO implement moving a tab from an index to another
     }
+
+    // fn activate_next_tab(&mut selt) {
+        // TODO implement activating the next tab
+    // }
+
+    // fn activate_previous_tab(&mut selt) {
+        // TODO implement activating the previous tab
+    // }
 
     fn change_font_size(&mut self, delta: f32) {
         *self.font_size = max(*self.font_size + delta, Size::new(FONT_SIZE_STEP));
@@ -321,31 +314,29 @@ impl Default for Mouse {
 ///
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
-pub struct Processor<T: 'static +  EventListener> {
-    terminal_tab_collection: TermTabCollection<T>,
+pub struct Processor {
+    display_context_map: DisplayContextMap,
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
     modifiers: ModifiersState,
     config: Config,
     message_buffer: MessageBuffer,
-    display: Display,
     font_size: Size,
 }
 
-impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
+impl Processor {
     /// Create a new event processor
     ///
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        terminal_tab_collection: TermTabCollection<T>,
+        display_context_map: DisplayContextMap,
         message_buffer: MessageBuffer,
         config: Config,
-        display: Display,
-    ) -> Processor<T> {
+    ) -> Processor {
         Processor {
-            terminal_tab_collection,
+            display_context_map,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
@@ -353,32 +344,36 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
             font_size: config.font.size,
             config,
             message_buffer,
-            display,
         }
     }
 
     /// Run the event loop.
-    pub fn run(&mut self, mut event_loop: EventLoop<Event>)
-    where
-        T: EventListener,
-    {
+    pub fn run(&mut self, mut window_event_loop: EventLoop<Event>, event_proxy: &EventProxy) {
         let mut event_queue = Vec::new();
 
-        event_loop.run_return(|event, _event_loop, control_flow| {
+        window_event_loop.run_return(move |event, event_loop, control_flow| {   
             if self.config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
+
+            let display_ctx = self.display_context_map.get_display_context();
+
+            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
+            let mut term_tab_collection = term_tab_collection_arc.lock();
+
+            let display_arc = display_ctx.display.clone();
+            let mut display = display_arc.lock();
 
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
                     // Kill the current terminal
-                    if !self.terminal_tab_collection.is_empty() {
-                        self.terminal_tab_collection.close_current_tab();
+                    if !term_tab_collection.is_empty() {
+                        term_tab_collection.close_current_tab();
                     }
 
                     // Exit if the user have closed the last 
-                    if self.terminal_tab_collection.is_empty() {
+                    if term_tab_collection.is_empty() {
                         *control_flow = ControlFlow::Exit;
                     }
                     return;
@@ -400,55 +395,65 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
                     return;
                 },
             }
-
-            if self.terminal_tab_collection.is_empty() {
+            
+            if term_tab_collection.is_empty() {
                 return;
             }
 
-            let active_term_mutex = self.terminal_tab_collection.get_active_tab().clone();
+            let active_term_mutex = term_tab_collection.get_active_tab().clone();
             let mut terminal_ctx = active_term_mutex.lock();
             let terminal_arc = terminal_ctx.terminal.clone();
             let mut terminal = terminal_arc.lock();
 
             let mut display_update_pending = DisplayUpdate::default();
+            
+            let mut size_info = display.size_info;
+            let urls = display.urls.clone();
+            let highlighted_url = display.highlighted_url.clone();
 
             let context = ActionContext {
-                terminal_tab_collection: &mut self.terminal_tab_collection,
+                display_context_map: &mut self.display_context_map,
+                terminal_tab_collection: &mut term_tab_collection,
                 terminal: &mut terminal,
                 notifier: terminal_ctx.notifier.as_mut(),
                 mouse: &mut self.mouse,
-                size_info: &mut self.display.size_info,
+                size_info: &mut size_info,
                 received_count: &mut self.received_count,
                 suppress_chars: &mut self.suppress_chars,
                 modifiers: &mut self.modifiers,
                 message_buffer: &mut self.message_buffer,
                 display_update_pending: &mut display_update_pending,
-                window: &mut self.display.window,
+                window: &mut display.window,
                 font_size: &mut self.font_size,
                 config: &mut self.config,
             };
 
             let mut processor =
-                input::Processor::new(context, &self.display.urls, &self.display.highlighted_url);
+                 input::Processor::new(context, &urls, &highlighted_url);
 
             for event in event_queue.drain(..) {
                 Processor::handle_event(event, &mut processor);
             }
-
-            if self.terminal_tab_collection.is_empty() {
+            
+            if term_tab_collection.is_empty() {
                 *control_flow = ControlFlow::Exit;
                 return;
             }
-
-            // Commit any changes to the tab collection made by the action handling
-            let is_tab_collection_dirty = self.terminal_tab_collection.commit_changes(
+            
+            let is_display_context_dirty = match self.display_context_map.commit_changes(
+                size_info,
+                &mut term_tab_collection,
                 &self.config, 
-                self.display.size_info
-            );
+                &event_loop, 
+                event_proxy,
+            ) {
+                Ok(is_dirty) => is_dirty,
+                Err(_error) => return,
+            };
 
             // Process resize events
             if !display_update_pending.is_empty() {
-                self.display.handle_update(
+                display.handle_update(
                     &mut terminal,
                     terminal_ctx.resize_handle.as_mut(),
                     &self.message_buffer,
@@ -466,7 +471,7 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
                 }
 
                 // Redraw screen
-                self.display.draw(
+                display.draw(
                     terminal,
                     &self.message_buffer,
                     &self.config,
@@ -477,14 +482,14 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
 
             // TODO there has to be a cleaner way to reuse the same condition above
             // If the terminal collection changed, make sure we draw the active temrinal
-            if is_tab_collection_dirty { 
-                let active_term_mutex = self.terminal_tab_collection.get_active_tab().clone();
+            if is_display_context_dirty { 
+                let active_term_mutex = term_tab_collection.get_active_tab().clone();
                 let terminal_ctx = active_term_mutex.lock();
                 let terminal_arc = terminal_ctx.terminal.clone();
                 let terminal = terminal_arc.lock();
 
                 // Redraw screen
-                self.display.draw(
+                display.draw(
                     terminal,
                     &self.message_buffer,
                     &self.config,
@@ -502,7 +507,7 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event(
+    fn handle_event<T: 'static + Clone + Send>(
         event: GlutinEvent<Event>,
         processor: &mut input::Processor<T, ActionContext<Notifier, T>>,
     ) where
@@ -599,6 +604,11 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
 
                             processor.on_focus_change(is_focused);
                         }
+
+                        if is_focused {
+                            processor.ctx.window.focus();
+                            processor.ctx.display_context_map.activate_window(window_id);
+                        }
                     },
                     DroppedFile(path) => {
                         // TODO not sure why I need to import the ActionContext here
@@ -691,35 +701,36 @@ impl<T: 'static +  EventListener + Clone + Send> Processor<T> {
         }
     }
 
+    // TODO put this function back
     // Write the ref test results to the disk
-    pub fn write_ref_test_results(&self, terminal: &Term<T>) {
-        if !self.config.debug.ref_test {
-            return;
-        }
+    // pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
+    //     if !self.config.debug.ref_test {
+    //         return;
+    //     }
 
-        // dump grid state
-        let mut grid = terminal.grid().clone();
-        grid.initialize_all(&Cell::default());
-        grid.truncate();
+    //     // dump grid state
+    //     let mut grid = terminal.grid().clone();
+    //     grid.initialize_all(&Cell::default());
+    //     grid.truncate();
 
-        let serialized_grid = json::to_string(&grid).expect("serialize grid");
+    //     let serialized_grid = json::to_string(&grid).expect("serialize grid");
 
-        let serialized_size = json::to_string(&self.display.size_info).expect("serialize size");
+    //     let serialized_size = json::to_string(&self.display.size_info).expect("serialize size");
 
-        let serialized_config = format!("{{\"history_size\":{}}}", grid.history_size());
+    //     let serialized_config = format!("{{\"history_size\":{}}}", grid.history_size());
 
-        File::create("./grid.json")
-            .and_then(|mut f| f.write_all(serialized_grid.as_bytes()))
-            .expect("write grid.json");
+    //     File::create("./grid.json")
+    //         .and_then(|mut f| f.write_all(serialized_grid.as_bytes()))
+    //         .expect("write grid.json");
 
-        File::create("./size.json")
-            .and_then(|mut f| f.write_all(serialized_size.as_bytes()))
-            .expect("write size.json");
+    //     File::create("./size.json")
+    //         .and_then(|mut f| f.write_all(serialized_size.as_bytes()))
+    //         .expect("write size.json");
 
-        File::create("./config.json")
-            .and_then(|mut f| f.write_all(serialized_config.as_bytes()))
-            .expect("write config.json");
-    }
+    //     File::create("./config.json")
+    //         .and_then(|mut f| f.write_all(serialized_config.as_bytes()))
+    //         .expect("write config.json");
+    // }
 }
 
 #[derive(Debug, Clone)]

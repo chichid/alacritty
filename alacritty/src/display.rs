@@ -14,6 +14,7 @@
 
 //! The display subsystem including window management, font rasterization, and
 //! GPU drawing.
+use glutin::event_loop::EventLoopWindowTarget;
 use std::f64;
 use std::fmt;
 use std::time::Instant;
@@ -128,11 +129,7 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new(config: &Config, event_loop: &EventLoop<Event>) -> Result<Display, Error> {
-        // Guess DPR based on first monitor
-        let estimated_dpr =
-            event_loop.available_monitors().next().map(|m| m.hidpi_factor()).unwrap_or(1.);
-
+    pub fn new(config: &Config, estimated_dpr: f64, event_loop: &EventLoopWindowTarget<Event>) -> Result<Display, Error> {
         // Guess the target window dimensions
         let metrics = GlyphCache::static_metrics(config.font.clone(), estimated_dpr)?;
         let (cell_width, cell_height) = compute_cell_size(config, &metrics);
