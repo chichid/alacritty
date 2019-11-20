@@ -22,7 +22,6 @@ use std::os::raw::c_ulong;
 #[cfg(not(windows))]
 use glutin::dpi::PhysicalPosition;
 use glutin::dpi::{LogicalPosition, LogicalSize, PhysicalSize};
-use glutin::event_loop::EventLoop;
 #[cfg(target_os = "macos")]
 use glutin::platform::macos::{RequestUserAttentionType, WindowBuilderExtMacOS, WindowExtMacOS};
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -43,6 +42,12 @@ use alacritty_terminal::gl;
 use alacritty_terminal::term::{SizeInfo, Term};
 
 use crate::config::Config;
+use crate::glutin_context_tracker::{
+    ContextTracker, SHARED_GL_CONTEXT_TRACKER, 
+    ContextCurrentWrapper, ContextWrapper, ContextId
+};
+
+// Create a singleton context tracker
 
 // It's required to be in this directory due to the `windows.rc` file
 #[cfg(not(target_os = "macos"))]
@@ -136,7 +141,7 @@ fn create_gl_window(
 ///
 /// Wraps the underlying windowing library to provide a stable API in Alacritty
 pub struct Window {
-    windowed_context: WindowedContext<PossiblyCurrent>,
+    context_id: ContextId,
     current_mouse_cursor: CursorIcon,
     mouse_visible: bool,
 }
@@ -171,8 +176,14 @@ impl Window {
                 }
             }
         }
+        
+        let context_id = unsafe { 
+            SHARED_GL_CONTEXT_TRACKER.insert(ContextCurrentWrapper::PossiblyCurrent(
+                ContextWrapper::Windowed(windowed_context)
+            ))
+        };
 
-        Ok(Window { current_mouse_cursor, mouse_visible: true, windowed_context })
+        Ok(Window { current_mouse_cursor, mouse_visible: true, context_id })
     }
 
     pub fn focus(&mut self) {
@@ -386,15 +397,18 @@ impl Window {
     }
 
     pub fn swap_buffers(&self) {
-        self.windowed_context.swap_buffers().expect("swap buffers");
+        let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+        ctx.windowed().swap_buffers().expect("swap buffers");
     }
 
     pub fn resize(&self, size: PhysicalSize) {
-        self.windowed_context.resize(size);
+        let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+        ctx.windowed().resize(size);
     }
 
     fn window(&self) -> &GlutinWindow {
-        self.windowed_context.window()
+        let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+        ctx.windowed().window()
     }
 }
 
