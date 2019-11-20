@@ -357,7 +357,10 @@ impl Processor {
                 info!("glutin event: {:?}", event);
             }
             
-            // Activation & Deactivation of windows
+            let mut is_close_requested = false;
+            let mut is_user_exit = false;
+
+            // Activation & Deactivation of windows           
             if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
                 use glutin::event::WindowEvent::*;
                 match &event{
@@ -369,6 +372,7 @@ impl Processor {
                         }
                     },
                     CloseRequested => {
+                        is_close_requested = true;
                         let display_ctx = self.display_context_map.get_active_display_context();
                         let display_arc = display_ctx.display.clone();
                         let display = display_arc.lock();
@@ -383,7 +387,7 @@ impl Processor {
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
-                    // Exit requested
+                    is_user_exit = true;
                 },
 
                 // Process events
@@ -421,10 +425,16 @@ impl Processor {
             let mut display = display_arc.lock();
 
             if term_tab_collection.is_empty() {
-                println!("Tab Collection is empty");
                 let window = &display.window;
                 self.display_context_map.exit(window.window_id());
                 window.close();
+                return;
+            }
+
+            // handle pty detach
+            if !is_close_requested && is_user_exit {
+                term_tab_collection.close_current_tab();
+                term_tab_collection.commit_changes(&self.config, display.size_info);
                 return;
             }
 
@@ -563,6 +573,9 @@ impl Processor {
             GlutinEvent::WindowEvent { event, window_id, .. } => {
                 use glutin::event::WindowEvent::*;
                 match event {
+                    CloseRequested => {
+                        // This is handled as part of the main loop now as part of the window activation/deactivation
+                    },
                     Resized(lsize) => {
                         let psize = lsize.to_physical(processor.ctx.size_info.dpr);
                         processor.ctx.display_update_pending.dimensions = Some(psize);
