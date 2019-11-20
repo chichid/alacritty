@@ -427,12 +427,12 @@ pub fn default_key_bindings() -> Vec<KeyBinding> {
     }
 
     bindings.extend(platform_key_bindings());
-    bindings.extend(default_term_tabs_key_bindings());
+    bindings.extend(default_window_navigation_bindings());
 
     bindings
 }
 
-fn default_term_tabs_key_bindings() -> Vec<KeyBinding> {
+fn default_window_navigation_bindings() -> Vec<KeyBinding> {
     // By Default, using ctrl+T, this can be changed from here
     let use_alt = false;
     let use_ctrl = true;
@@ -447,6 +447,11 @@ fn default_term_tabs_key_bindings() -> Vec<KeyBinding> {
 
     bindings!(
         KeyBinding;
+
+        // Windows
+        Key::N, [alt: use_alt, ctrl: use_ctrl] ; Action::SpawnNewInstance;
+
+        // Tabs
         Key::T, [alt: use_alt, ctrl: use_ctrl] ; Action::SpawnNewTab;
         Key::W, [alt: use_alt, ctrl: use_ctrl] ; Action::CloseCurrentTab;
         Key::Key1, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(0);
