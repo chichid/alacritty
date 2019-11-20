@@ -25,7 +25,6 @@
 #[cfg(target_os = "macos")]
 use std::env;
 use std::error::Error;
-use std::sync::Arc;
 use std::fs;
 use std::io::{self, Write};
 #[cfg(not(windows))]
@@ -44,7 +43,6 @@ use alacritty_terminal::locale;
 use alacritty_terminal::message_bar::MessageBuffer;
 use alacritty_terminal::panic;
 use alacritty_terminal::tty;
-use alacritty_terminal::sync::FairMutex;
 
 mod cli;
 mod config;
@@ -56,6 +54,7 @@ mod url;
 mod window;
 mod display_context;
 mod term_tabs;
+mod glutin_context_tracker;
 
 use crate::cli::Options;
 use crate::config::monitor::Monitor;
