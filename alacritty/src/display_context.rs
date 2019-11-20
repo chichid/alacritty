@@ -67,7 +67,7 @@ impl DisplayContextMap {
   }
 
   pub fn has_active_display(&mut self) -> bool{
-    if self.active_window_id != None { true } else { false }
+    self.active_window_id != None
   }
 
   pub fn exit(&mut self, window_id: WindowId) {
@@ -85,7 +85,7 @@ impl DisplayContextMap {
   }
 
   pub fn deactivate_window(&mut self, window_id: WindowId) {
-    if (self.active_window_id != None && self.active_window_id.unwrap() == window_id) {
+    if self.active_window_id != None && self.active_window_id.unwrap() == window_id {
       self.active_window_id = None;
     }
   }
@@ -107,16 +107,10 @@ impl DisplayContextMap {
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
     // Handle Exit
-    let did_exit = if self.pending_exit != None {
-      let window_id = self.pending_exit.unwrap();
-      
-      // current_term_tab_collection.close_all_tabs();
+    let did_exit = self.pending_exit != None;
+    if did_exit {
       self.pending_exit = None;
-      
-      true
-    } else { 
-      false
-    };
+    }
     
     // Handle Window Creation
     if self.pending_create_display {
@@ -128,13 +122,11 @@ impl DisplayContextMap {
     }
 
     // Handle Window Activation
-    let did_activate_screen = if self.pending_window_to_activate != None {
+    let did_activate_screen = self.pending_window_to_activate != None;    
+    if did_activate_screen {
       self.active_window_id = self.pending_window_to_activate;
-      self.pending_window_to_activate = None;
-      true
-    } else {
-      false
-    };
+      self.pending_window_to_activate = None;      
+    }
 
     // Commit any changes to the tab collection
     let is_tab_collection_dirty = current_term_tab_collection.commit_changes(

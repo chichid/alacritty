@@ -414,7 +414,7 @@ impl Processor {
                 return;
             }
 
-            if (!self.display_context_map.has_active_display()) {
+            if !self.display_context_map.has_active_display() {
                 return;
             }
 
@@ -477,7 +477,9 @@ impl Processor {
                 return;
             }
             
-            terminal.dirty = terminal.dirty || pending_display_context_refesh;
+            let did_create_new_display = self.display_context_map.is_pending_create_display();
+            let display_context_need_redraw = pending_display_context_refesh;
+
             pending_display_context_refesh = match self.display_context_map.commit_changes(
                 size_info,
                 &mut term_tab_collection,
@@ -488,6 +490,17 @@ impl Processor {
                 Ok(is_dirty) => is_dirty,
                 Err(_error) => return,
             };
+            
+            // Resize newly created screen
+            if did_create_new_display {
+                // TODO this is actually not working perfectly
+                let inn_size = display.window.inner_size();
+                let dpr = display.size_info.dpr;
+                let psize = inn_size.to_physical(dpr);
+                display_update_pending.dimensions = Some(psize);
+                terminal.dirty = true;
+                println!("Resize new display {:?} is empty {}", psize, display_update_pending.is_empty());
+            }
 
             // Process resize events
             if !display_update_pending.is_empty() {
@@ -500,7 +513,7 @@ impl Processor {
                 );
             }
 
-            if terminal.dirty {
+            if terminal.dirty || display_context_need_redraw {
                 terminal.dirty = false;
 
                 // Request immediate re-draw if visual bell animation is not finished yet

@@ -327,6 +327,7 @@ impl Display {
 
         // Subtract message bar lines from pty size
         if let Some(message) = message_buffer.message() {
+            println!("Terminal resized {:?}", pty_size);
             let lines = message.text(&self.size_info).len();
             pty_size.height -= pty_size.cell_height * lines as f32;
         }
