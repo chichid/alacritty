@@ -62,6 +62,10 @@ impl DisplayContextMap {
     self.map.is_empty()
   }
 
+  pub fn is_pending_create_display(&self) -> bool {
+    self.pending_create_display
+  }
+
   pub fn has_active_display(&mut self) -> bool{
     if self.active_window_id != None { true } else { false }
   }
@@ -160,17 +164,25 @@ impl DisplayContext {
     // The tab collection is a collection of TerminalTab that holds the state of all tabs
     let mut term_tab_collection = TermTabCollection::new(event_proxy.clone());
     term_tab_collection.initialize(&config);
-
+    
     // Create a display
     //
     // The display manages a window and can draw the terminal.
     let display = Display::new(config, estimated_dpr, window_event_loop)?;
     info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
+    // Now we can resize the terminal
+    let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
+    let active_tab_arc = term_tab_collection.lock().get_active_tab().clone();
+    let term_arc = active_tab_arc.lock().terminal.clone();
+    let mut term = term_arc.lock();
+    term.resize(&display.size_info);
+    term.dirty = true;
+
     Ok(DisplayContext {
       window_id: display.window.window_id(),
       display: Arc::new(FairMutex::new(display)),
-      term_tab_collection: Arc::new(FairMutex::new(term_tab_collection))
+      term_tab_collection: term_tab_collection.clone()
     })
   }
 }
