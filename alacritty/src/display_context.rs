@@ -47,7 +47,7 @@ impl DisplayContextMap {
       .map(|m| m.hidpi_factor()).unwrap_or(1.);
 
     // Create the initial display
-    let display_context = self.create_display_context(config, window_event_loop, event_proxy)?;
+    let display_context = DisplayContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
     let window_id = display_context.window_id;
     self.map.insert(window_id, display_context);
     self.active_window_id = Some(window_id);
@@ -78,7 +78,7 @@ impl DisplayContextMap {
   ) -> Result<bool, Error> {
     // Handle Window Creation
     if self.pending_create_display {
-      let display_context = self.create_display_context(config, window_event_loop, event_proxy)?;
+      let display_context = DisplayContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
       let window_id = display_context.window_id;
       self.map.insert(window_id, display_context);
       self.active_window_id = Some(window_id);
@@ -102,9 +102,17 @@ impl DisplayContextMap {
 
     Ok(did_activate_screen || is_tab_collection_dirty)
   }
+}
 
+pub struct DisplayContext {
+  pub window_id: WindowId,
+  pub display: Arc<FairMutex<Display>>,
+  pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
+}
 
-  fn create_display_context(&self, 
+impl DisplayContext {
+  fn new(
+    estimated_dpr: f64,
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>,
     event_proxy: &EventProxy
@@ -118,7 +126,7 @@ impl DisplayContextMap {
     // Create a display
     //
     // The display manages a window and can draw the terminal.
-    let display = Display::new(config, self.estimated_dpr, window_event_loop)?;
+    let display = Display::new(config, estimated_dpr, window_event_loop)?;
     info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
     Ok(DisplayContext {
@@ -127,10 +135,4 @@ impl DisplayContextMap {
       term_tab_collection: Arc::new(FairMutex::new(term_tab_collection))
     })
   }
-}
-
-pub struct DisplayContext {
-  pub window_id: WindowId,
-  pub display: Arc<FairMutex<Display>>,
-  pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
 }
