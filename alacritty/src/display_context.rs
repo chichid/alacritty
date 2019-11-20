@@ -19,8 +19,9 @@ use crate::term_tabs::TermTabCollection;
 pub struct DisplayContextMap {
   active_window_id: Option<WindowId>,
   map: HashMap<WindowId, DisplayContext>,
-  pending_create_display: bool,
   estimated_dpr: f64,
+  pending_create_display: bool,
+  pending_window_to_activate: Option<WindowId>,
 }
 
 impl DisplayContextMap {
@@ -30,6 +31,7 @@ impl DisplayContextMap {
       estimated_dpr: 0.0,
       map: HashMap::new(),
       pending_create_display: false,
+      pending_window_to_activate: None,
     }
   }
 
@@ -59,7 +61,7 @@ impl DisplayContextMap {
 
   pub fn activate_window(&mut self, window_id: WindowId) {
     println!("Activate window called {:?}", window_id);
-    self.active_window_id = Some(window_id);
+    self.pending_window_to_activate = Some(window_id);
   }
 
   pub fn get_display_context(&self) -> &DisplayContext {
@@ -74,6 +76,7 @@ impl DisplayContextMap {
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
+    // Handle Window Creation
     if self.pending_create_display {
       let display_context = self.create_display_context(config, window_event_loop, event_proxy)?;
       let window_id = display_context.window_id;
@@ -82,12 +85,22 @@ impl DisplayContextMap {
       self.pending_create_display = false;
     }
 
+    // Handle Window Activation
+    let did_activate_screen = if self.pending_window_to_activate != None {
+      self.active_window_id = self.pending_window_to_activate;
+      self.pending_window_to_activate = None;
+      true
+    } else {
+      false
+    };
+
+    // Commit any changes to the tab collection
     let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
       config, 
       size_info,
     );
 
-    Ok(is_tab_collection_dirty)
+    Ok(did_activate_screen || is_tab_collection_dirty)
   }
 
 
