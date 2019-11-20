@@ -352,33 +352,40 @@ impl Processor {
         let mut event_queue = Vec::new();
         let mut pending_display_context_refesh = false;
 
-        window_event_loop.run_return(move |event, event_loop, control_flow| {   
+        window_event_loop.run_return(|event, event_loop, control_flow| {   
             if self.config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
-
-            let display_ctx = self.display_context_map.get_display_context();
-
-            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-            let mut term_tab_collection = term_tab_collection_arc.lock();
-
-            let display_arc = display_ctx.display.clone();
-            let mut display = display_arc.lock();
-
+            
+            // Activation & Deactivation of windows
+            if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
+                use glutin::event::WindowEvent::*;
+                match &event{
+                    Focused(is_focused) => {
+                        if *is_focused {
+                            self.display_context_map.activate_window(*window_id);
+                        } else {
+                            self.display_context_map.deactivate_window(*window_id);
+                        }
+                    },
+                    CloseRequested => {
+                        let display_ctx = self.display_context_map.get_active_display_context();
+                        let display_arc = display_ctx.display.clone();
+                        let display = display_arc.lock();
+                        let window = &display.window;
+                        window.close();
+                        self.display_context_map.exit(*window_id);
+                    }
+                    _ => {}
+                }
+            };
+            
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
-                    // Kill the current terminal
-                    if !term_tab_collection.is_empty() {
-                        term_tab_collection.close_current_tab();
-                    }
-
-                    // Exit if the user have closed the last 
-                    if term_tab_collection.is_empty() {
-                        *control_flow = ControlFlow::Exit;
-                    }
-                    return;
+                    // Exit requested
                 },
+
                 // Process events
                 GlutinEvent::EventsCleared => {
                     *control_flow = ControlFlow::Wait;
@@ -387,6 +394,7 @@ impl Processor {
                         return;
                     }
                 },
+
                 // Buffer events
                 _ => {
                     *control_flow = ControlFlow::Poll;
@@ -396,8 +404,27 @@ impl Processor {
                     return;
                 },
             }
-            
+
+            if self.display_context_map.is_empty() {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
+
+            if (!self.display_context_map.has_active_display()) {
+                return;
+            }
+
+            let display_ctx = self.display_context_map.get_active_display_context();
+            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
+            let mut term_tab_collection = term_tab_collection_arc.lock();
+            let display_arc = display_ctx.display.clone();
+            let mut display = display_arc.lock();
+
             if term_tab_collection.is_empty() {
+                println!("Tab Collection is empty");
+                let window = &display.window;
+                self.display_context_map.exit(window.window_id());
+                window.close();
                 return;
             }
 
@@ -437,7 +464,6 @@ impl Processor {
             }
             
             if term_tab_collection.is_empty() {
-                *control_flow = ControlFlow::Exit;
                 return;
             }
             
@@ -538,7 +564,6 @@ impl Processor {
                 use glutin::event::WindowEvent::*;
                 match event {
                     CloseRequested => {
-                        processor.ctx.terminal_tab_collection.close_all_tabs();
                         processor.ctx.terminal.exit();
                     },
                     Resized(lsize) => {
@@ -587,11 +612,6 @@ impl Processor {
                             }
 
                             processor.on_focus_change(is_focused);
-                        }
-
-                        if is_focused {
-                            processor.ctx.window.focus();
-                            processor.ctx.display_context_map.activate_window(window_id);
                         }
                     },
                     DroppedFile(path) => {

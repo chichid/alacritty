@@ -187,7 +187,7 @@ impl Window {
     }
 
     pub fn focus(&mut self) {
-        println!("must implement window focus");
+        unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
     }
 
     pub fn set_inner_size(&mut self, size: LogicalSize) {
@@ -409,6 +409,10 @@ impl Window {
     fn window(&self) -> &GlutinWindow {
         let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
         ctx.windowed().window()
+    }
+
+    pub fn close(&self) {
+        unsafe { SHARED_GL_CONTEXT_TRACKER.remove(self.context_id); }
     }
 }
 

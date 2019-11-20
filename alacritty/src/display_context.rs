@@ -21,7 +21,9 @@ pub struct DisplayContextMap {
   map: HashMap<WindowId, DisplayContext>,
   estimated_dpr: f64,
   pending_create_display: bool,
+  // TODO maybe move to display
   pending_window_to_activate: Option<WindowId>,
+  pending_exit: Option<WindowId>
 }
 
 impl DisplayContextMap {
@@ -32,6 +34,7 @@ impl DisplayContextMap {
       map: HashMap::new(),
       pending_create_display: false,
       pending_window_to_activate: None,
+      pending_exit: None,
     }
   }
 
@@ -55,18 +58,41 @@ impl DisplayContextMap {
     Ok(())
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.map.is_empty()
+  }
+
+  pub fn has_active_display(&mut self) -> bool{
+    if self.active_window_id != None { true } else { false }
+  }
+
+  pub fn exit(&mut self, window_id: WindowId) {
+    self.pending_exit = Some(window_id);
+
+    if self.active_window_id.unwrap() == window_id {
+      self.active_window_id = None;
+    }
+
+    self.map.remove_entry(&window_id);
+  }
+
+  pub fn activate_window(&mut self, window_id: WindowId) {
+    self.active_window_id = Some(window_id);
+  }
+
+  pub fn deactivate_window(&mut self, window_id: WindowId) {
+    if (self.active_window_id != None && self.active_window_id.unwrap() == window_id) {
+      self.active_window_id = None;
+    }
+  }
+
   pub fn push_display_context(&mut self) {
     self.pending_create_display = true;
   }
 
-  pub fn activate_window(&mut self, window_id: WindowId) {
-    println!("Activate window called {:?}", window_id);
-    self.pending_window_to_activate = Some(window_id);
-  }
-
-  pub fn get_display_context(&self) -> &DisplayContext {
-    let win_id = &self.active_window_id.unwrap();
-    &self.map[win_id]
+  pub fn get_active_display_context(&self) -> &DisplayContext {
+    let window_id = &self.active_window_id.unwrap();
+    &self.map[window_id]
   }
 
   pub fn commit_changes<T: 'static +  EventListener + Clone + Send>(&mut self, 
@@ -76,6 +102,18 @@ impl DisplayContextMap {
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
+    // Handle Exit
+    let did_exit = if self.pending_exit != None {
+      let window_id = self.pending_exit.unwrap();
+      
+      // current_term_tab_collection.close_all_tabs();
+      self.pending_exit = None;
+      
+      true
+    } else { 
+      false
+    };
+    
     // Handle Window Creation
     if self.pending_create_display {
       let display_context = DisplayContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
@@ -100,7 +138,7 @@ impl DisplayContextMap {
       size_info,
     );
 
-    Ok(did_activate_screen || is_tab_collection_dirty)
+    Ok(did_exit || did_activate_screen || is_tab_collection_dirty)
   }
 }
 
