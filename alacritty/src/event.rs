@@ -563,9 +563,6 @@ impl Processor {
             GlutinEvent::WindowEvent { event, window_id, .. } => {
                 use glutin::event::WindowEvent::*;
                 match event {
-                    CloseRequested => {
-                        processor.ctx.terminal.exit();
-                    },
                     Resized(lsize) => {
                         let psize = lsize.to_physical(processor.ctx.size_info.dpr);
                         processor.ctx.display_update_pending.dimensions = Some(psize);
