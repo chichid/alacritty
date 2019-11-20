@@ -11,6 +11,9 @@ use alacritty_terminal::tty;
 
 use crate::config::Config;
 
+#[cfg(not(windows))]
+use std::os::unix::io::AsRawFd;
+
 pub struct TermTabCollection<T> {
     event_proxy: T,
     active_tab: usize,
