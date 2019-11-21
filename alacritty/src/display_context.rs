@@ -1,3 +1,5 @@
+use std::slice::Iter;
+use std::slice::IterMut;
 use glutin::window::WindowId;
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::term::SizeInfo;
@@ -99,9 +101,10 @@ impl DisplayContextMap {
     &self.map[window_id]
   }
 
-  pub fn commit_changes<T: 'static +  EventListener + Clone + Send>(&mut self, 
+  pub fn commit_changes(&mut self, 
+    display_command_queue: &mut DisplayCommandQueue,
     size_info: SizeInfo,
-    current_term_tab_collection: &mut TermTabCollection<T>,
+    current_term_tab_collection: &mut TermTabCollection<EventProxy>,
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
@@ -114,11 +117,7 @@ impl DisplayContextMap {
     
     // Handle Window Creation
     if self.pending_create_display {
-      let display_context = DisplayContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
-      let window_id = display_context.window_id;
-      self.map.insert(window_id, display_context);
-      self.active_window_id = Some(window_id);
-      self.pending_create_display = false;
+      
     }
 
     // Handle Window Activation
@@ -134,7 +133,37 @@ impl DisplayContextMap {
       size_info,
     );
 
+    // Drain the display command queue
+    for command in display_command_queue.iterator() {
+      match command {
+        CreateDisplay => self.command_create_new_display(current_term_tab_collection, config, window_event_loop, event_proxy)?,
+        _ => {}
+      }
+    }
+
     Ok(did_exit || did_activate_screen || is_tab_collection_dirty)
+  }
+
+  fn command_create_new_display(&mut self, 
+    current_term_tab_collection: &mut TermTabCollection<EventProxy>,
+    config: &Config, 
+    window_event_loop: &EventLoopWindowTarget<Event>, 
+    event_proxy: &EventProxy
+  ) -> Result<(), Error> {
+    info!("command_create_new_display");
+    let display_context = DisplayContext::new(
+      self.estimated_dpr, 
+      config, 
+      window_event_loop, 
+      event_proxy
+    )?;
+
+    let window_id = display_context.window_id;
+    self.map.insert(window_id, display_context);
+    self.active_window_id = Some(window_id);
+    self.pending_create_display = false;
+
+    Ok(())
   }
 }
 
@@ -177,4 +206,25 @@ impl DisplayContext {
       term_tab_collection: term_tab_collection.clone()
     })
   }
+}
+
+
+#[derive (Default)]
+pub struct DisplayCommandQueue {
+  queue: Vec<DisplayCommand>
+}
+
+impl DisplayCommandQueue {
+  pub fn push(&mut self, command: DisplayCommand) {
+    self.queue.push(command);
+  }
+
+  pub fn iterator(&self) -> Iter<DisplayCommand> {
+    self.queue.iter()
+  }
+}
+
+#[derive (Clone)]
+pub enum DisplayCommand {
+  CreateDisplay,
 }

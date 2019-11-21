@@ -43,6 +43,7 @@ use crate::display::Display;
 use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
 use crate::term_tabs::TermTabCollection;
+use crate::display_context::{DisplayCommandQueue, DisplayCommand};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -60,6 +61,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
+    pub display_command_queue: &'a mut DisplayCommandQueue,
     pub display_context_map: &'a mut DisplayContextMap,
     pub terminal_tab_collection: &'a mut TermTabCollection<T>,
     pub size_info: &'a mut SizeInfo,
@@ -204,7 +206,8 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        self.display_context_map.push_display_context();
+        // self.display_context_map.push_display_context();
+        self.display_command_queue.push(DisplayCommand::CreateDisplay);
     }
 
     fn spawn_new_tab(&mut self) {
@@ -359,6 +362,7 @@ impl Processor {
             
             let mut is_close_requested = false;
             let mut is_user_exit = false;
+            let mut display_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
             if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
@@ -383,6 +387,15 @@ impl Processor {
                     _ => {}
                 }
             };
+
+            if self.display_context_map.is_empty() {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
+
+            if !self.display_context_map.has_active_display() {
+                return;
+            }
             
             match &event {
                 // Check for shutdown
@@ -407,15 +420,6 @@ impl Processor {
                     }
                     return;
                 },
-            }
-
-            if self.display_context_map.is_empty() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            if !self.display_context_map.has_active_display() {
-                return;
             }
 
             let display_ctx = self.display_context_map.get_active_display_context();
@@ -450,6 +454,7 @@ impl Processor {
             let highlighted_url = display.highlighted_url.clone();
 
             let context = ActionContext {
+                display_command_queue: &mut display_command_queue,
                 display_context_map: &mut self.display_context_map,
                 terminal_tab_collection: &mut term_tab_collection,
                 terminal: &mut terminal,
@@ -478,9 +483,9 @@ impl Processor {
             }
             
             let did_create_new_display = self.display_context_map.is_pending_create_display();
-            let display_context_need_redraw = pending_display_context_refesh;
 
-            pending_display_context_refesh = match self.display_context_map.commit_changes(
+            match self.display_context_map.commit_changes(
+                &mut display_command_queue,
                 size_info,
                 &mut term_tab_collection,
                 &self.config, 
@@ -490,17 +495,6 @@ impl Processor {
                 Ok(is_dirty) => is_dirty,
                 Err(_error) => return,
             };
-            
-            // Resize newly created screen
-            if did_create_new_display {
-                // TODO this is actually not working perfectly
-                let inn_size = display.window.inner_size();
-                let dpr = display.size_info.dpr;
-                let psize = inn_size.to_physical(dpr);
-                display_update_pending.dimensions = Some(psize);
-                terminal.dirty = true;
-                println!("Resize new display {:?} is empty {}", psize, display_update_pending.is_empty());
-            }
 
             // Process resize events
             if !display_update_pending.is_empty() {
@@ -513,7 +507,7 @@ impl Processor {
                 );
             }
 
-            if terminal.dirty || display_context_need_redraw {
+            if terminal.dirty || did_create_new_display {
                 terminal.dirty = false;
 
                 // Request immediate re-draw if visual bell animation is not finished yet
