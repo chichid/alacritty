@@ -30,7 +30,7 @@ dependencies = [
  "dirs 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "font 0.1.0",
- "glutin 0.22.0-alpha5 (git+https://github.com/chrisduerr/glutin)",
+ "glutin 0.22.0-alpha3 (git+https://github.com/chrisduerr/glutin)",
  "image 0.22.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
