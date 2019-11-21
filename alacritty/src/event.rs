@@ -2,8 +2,6 @@
 use glutin::window::WindowId;
 use std::sync::Arc;
 use alacritty_terminal::sync::FairMutex;
-use crate::display_context::DisplayContext;
-use crate::display_context::DisplayContextMap;
 use alacritty_terminal::event_loop::Notifier;
 use std::borrow::Cow;
 use std::cmp::max;
@@ -45,6 +43,8 @@ use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
 use crate::term_tabs::TermTabCollection;
 use crate::display_context::{DisplayCommandQueue, DisplayCommand};
+use crate::display_context::WindowContext;
+use crate::display_context::DisplayContextMap;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {

@@ -63,7 +63,7 @@ impl DisplayCommandQueue {
 
 pub struct DisplayContextMap {
   active_window_id: Option<WindowId>,
-  map: HashMap<WindowId, DisplayContext>,
+  map: HashMap<WindowId, WindowContext>,
   estimated_dpr: f64,
 }
 
@@ -88,7 +88,7 @@ impl DisplayContextMap {
       .map(|m| m.hidpi_factor()).unwrap_or(1.);
 
     // Create the initial display
-    let display_context = DisplayContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
+    let display_context = WindowContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
     let window_id = display_context.window_id;
     self.map.insert(window_id, display_context);
     self.active_window_id = Some(window_id);
@@ -104,7 +104,7 @@ impl DisplayContextMap {
     self.active_window_id != None
   }
 
-  pub fn get_active_display_context(&self) -> &DisplayContext {
+  pub fn get_active_display_context(&self) -> &WindowContext {
     let window_id = &self.active_window_id.unwrap();
     &self.map[window_id]
   }
@@ -187,7 +187,7 @@ impl DisplayContextMap {
     event_proxy: &EventProxy
   ) -> Result<(), Error> {
     info!("command_create_new_display");
-    let display_context = DisplayContext::new(
+    let display_context = WindowContext::new(
       self.estimated_dpr, 
       config, 
       window_event_loop, 
@@ -223,19 +223,19 @@ impl DisplayContextMap {
   }
 }
 
-pub struct DisplayContext {
+pub struct WindowContext {
   pub window_id: WindowId,
   pub display: Arc<FairMutex<Display>>,
   pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
 }
 
-impl DisplayContext {
+impl WindowContext {
   fn new(
     estimated_dpr: f64,
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>,
     event_proxy: &EventProxy
-  ) -> Result<DisplayContext, Error> {
+  ) -> Result<WindowContext, Error> {
     // Create a terminal tab collection
     // 
     // The tab collection is a collection of TerminalTab that holds the state of all tabs
@@ -256,7 +256,7 @@ impl DisplayContext {
     term.resize(&display.size_info);
     term.dirty = true;
 
-    Ok(DisplayContext {
+    Ok(WindowContext {
       window_id: display.window.window_id(),
       display: Arc::new(FairMutex::new(display)),
       term_tab_collection: term_tab_collection.clone()
