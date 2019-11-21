@@ -52,7 +52,7 @@ mod input;
 mod logging;
 mod url;
 mod window;
-mod display_context;
+mod multi_window;
 mod term_tabs;
 mod glutin_context_tracker;
 
@@ -60,7 +60,7 @@ use crate::cli::Options;
 use crate::config::monitor::Monitor;
 use crate::config::Config;
 use crate::event::{EventProxy, Processor};
-use crate::display_context::WindowContextTracker;
+use crate::multi_window::WindowContextTracker;
 
 fn main() {
     panic::attach_handler();

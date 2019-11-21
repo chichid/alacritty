@@ -40,8 +40,7 @@ use crate::config;
 use crate::config::Config;
 use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
-use crate::display_context::{DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
-use crate::display_context::WindowContextTracker;
+use crate::multi_window::{WindowContextTracker, DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
