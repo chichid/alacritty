@@ -1,10 +1,10 @@
-use glutin::window::WindowId;
-use alacritty_terminal::term::SizeInfo;
-use glutin::event_loop::EventLoopWindowTarget;
 use std::sync::Arc;
 use log::info;
 use std::collections::HashMap;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
+
+use glutin::window::WindowId;
+use glutin::event_loop::EventLoopWindowTarget;
 
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::event::Event;
@@ -13,10 +13,8 @@ use crate::display::Error;
 use crate::event::{EventProxy};
 use crate::display::Display;
 use crate::config::Config;
-
 use crate::multi_window::term_tab::TermTab;
 use crate::multi_window::term_tab_collection::TermTabCollection;
-use crate::multi_window::command_queue::{DisplayCommand, DisplayCommandQueue};
 
 pub struct WindowContextTracker {
   active_window_id: Option<WindowId>,

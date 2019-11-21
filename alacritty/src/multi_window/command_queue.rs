@@ -11,7 +11,7 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 use crate::event::EventProxy;
 
 #[derive (Clone, PartialEq)]
-pub enum DisplayCommand {
+pub enum MultiWindowCommand {
   CreateDisplay,
   CreateTab,
   ActivateTab(usize), // tab_id
@@ -20,7 +20,7 @@ pub enum DisplayCommand {
 }
 
 #[derive (Clone)]
-pub enum DisplayCommandResult {
+pub enum MultiWindowCommandResult {
   Exit,
   Continue,
   RestartLoop,
@@ -28,14 +28,14 @@ pub enum DisplayCommandResult {
 }
 
 #[derive (Default)]
-pub struct DisplayCommandQueue {
-  queue: Vec<DisplayCommand>,
+pub struct MultiWindowCommandQueue {
+  queue: Vec<MultiWindowCommand>,
   has_create: bool,
 }
 
-impl DisplayCommandQueue {
-  pub fn push(&mut self, command: DisplayCommand) {
-    if command == DisplayCommand::CreateDisplay {
+impl MultiWindowCommandQueue {
+  pub fn push(&mut self, command: MultiWindowCommand) {
+    if command == MultiWindowCommand::CreateDisplay {
       self.has_create = true;
     }
 
@@ -50,7 +50,7 @@ impl DisplayCommandQueue {
     &mut self, 
     context_tracker: &mut WindowContextTracker, 
     event: &GlutinEvent<Event>,
-  ) -> DisplayCommandResult {
+  ) -> MultiWindowCommandResult {
     use glutin::event::WindowEvent::*;
 
     let mut is_close_requested = false;
@@ -79,7 +79,7 @@ impl DisplayCommandQueue {
     // handle pty detach (ex. when we type exit)
     if let GlutinEvent::UserEvent(Event::Exit) = &event {
         if !is_close_requested {
-            self.push(DisplayCommand::CloseCurrentTab);
+            self.push(MultiWindowCommand::CloseCurrentTab);
         }
     }
     
@@ -95,10 +95,10 @@ impl DisplayCommandQueue {
     }
     
     if context_tracker.is_empty() {
-      return DisplayCommandResult::Exit
+      return MultiWindowCommandResult::Exit
     }
 
-    DisplayCommandResult::Continue
+    MultiWindowCommandResult::Continue
   }
 
   pub fn run_user_input_commands(&mut self,
@@ -117,11 +117,11 @@ impl DisplayCommandQueue {
       let mut did_run_command = true;
 
       match command {
-        DisplayCommand::CreateDisplay => { context_tracker.create_display(config, window_event_loop, event_proxy)?; },
-        DisplayCommand::CreateTab => { current_tab_collection.push_tab(); },
-        DisplayCommand::ActivateTab(tab_id) => { current_tab_collection.activate_tab(*tab_id); },
-        DisplayCommand::CloseCurrentTab => { current_tab_collection.close_current_tab(); },
-        DisplayCommand::CloseTab(tab_id) => { current_tab_collection.close_tab(*tab_id); },
+        MultiWindowCommand::CreateDisplay => { context_tracker.create_display(config, window_event_loop, event_proxy)?; },
+        MultiWindowCommand::CreateTab => { current_tab_collection.push_tab(); },
+        MultiWindowCommand::ActivateTab(tab_id) => { current_tab_collection.activate_tab(*tab_id); },
+        MultiWindowCommand::CloseCurrentTab => { current_tab_collection.close_current_tab(); },
+        MultiWindowCommand::CloseTab(tab_id) => { current_tab_collection.close_tab(*tab_id); },
         _ => { did_run_command = false }
       }
 

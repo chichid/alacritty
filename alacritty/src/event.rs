@@ -41,7 +41,7 @@ use crate::config::Config;
 use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window; 
 use crate::multi_window::window_context_tracker::WindowContextTracker;
-use crate::multi_window::command_queue::{ DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
+use crate::multi_window::command_queue::{ MultiWindowCommandQueue, MultiWindowCommand, MultiWindowCommandResult};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -59,7 +59,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
-    pub multi_window_queue: &'a mut DisplayCommandQueue,
+    pub multi_window_queue: &'a mut MultiWindowCommandQueue,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -202,23 +202,23 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        self.multi_window_queue.push(DisplayCommand::CreateDisplay);
+        self.multi_window_queue.push(MultiWindowCommand::CreateDisplay);
     }
 
     fn spawn_new_tab(&mut self) {
-        self.multi_window_queue.push(DisplayCommand::CreateTab);
+        self.multi_window_queue.push(MultiWindowCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.multi_window_queue.push(DisplayCommand::ActivateTab(tab_id));
+        self.multi_window_queue.push(MultiWindowCommand::ActivateTab(tab_id));
     }
 
     fn close_current_tab(&mut self) {
-        self.multi_window_queue.push(DisplayCommand::CloseCurrentTab);
+        self.multi_window_queue.push(MultiWindowCommand::CloseCurrentTab);
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        self.multi_window_queue.push(DisplayCommand::CloseTab(tab_id));
+        self.multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
@@ -357,12 +357,12 @@ impl Processor {
             }
             
             // Multi window command queue: Manages windows and returns the currently active window
-            let mut multi_window_queue = DisplayCommandQueue::default();
+            let mut multi_window_queue = MultiWindowCommandQueue::default();
 
             // Activation & Deactivation of windows           
             match multi_window_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
-                DisplayCommandResult::RestartLoop => return,
-                DisplayCommandResult::Exit => {
+                MultiWindowCommandResult::RestartLoop => return,
+                MultiWindowCommandResult::Exit => {
                     *control_flow = ControlFlow::Exit;
                     return;
                 },
