@@ -385,6 +385,8 @@ impl Processor {
                 },
             }
             
+            if !self.display_context_map.has_active_display() { return; }
+
             let display_ctx = self.display_context_map.get_active_display_context();
             let display_arc = display_ctx.display.clone();
             let mut display = display_arc.lock();
@@ -424,10 +426,8 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
             
-            if term_tab_collection.is_empty() {
-                return;
-            }
-            
+            if term_tab_collection.is_empty() || !self.display_context_map.has_active_display() { return; }
+
             let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
             need_redraw = match self.display_context_map.run_user_input_commands(
                 &mut multi_window_command_queue,
