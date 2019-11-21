@@ -63,14 +63,12 @@ impl DisplayCommandQueue {
   }
 
   pub fn handle_multi_window_events(
-    &self, 
+    &mut self, 
     display_context_map: &mut DisplayContextMap, 
     event: &GlutinEvent<Event>,
     control_flow: &mut ControlFlow
   ) -> bool {
     use glutin::event::WindowEvent::*;
-
-    let mut multi_window_command_queue = DisplayCommandQueue::default();
 
     let mut is_close_requested = false;
     let mut win_id = None;
@@ -81,15 +79,15 @@ impl DisplayCommandQueue {
 
         match event {
             Focused(is_focused) => {
-                multi_window_command_queue.push(if *is_focused {
-                    DisplayCommand::ActivateWindow(*window_id)
+                if *is_focused {
+                    display_context_map.command_activate_window(window_id);
                 } else {
-                    DisplayCommand::DeactivateWindow(*window_id)
-                })
+                    display_context_map.command_deactivate_window(window_id);
+                }
             },
             CloseRequested => {
                 is_close_requested = true;
-                multi_window_command_queue.push(DisplayCommand::CloseWindow(*window_id))
+                display_context_map.command_close_window(window_id);
             }
             _ => {}
         }
@@ -98,7 +96,7 @@ impl DisplayCommandQueue {
     // handle pty detach (ex. when we type exit)
     if let GlutinEvent::UserEvent(Event::Exit) = &event {
         if !is_close_requested {
-            multi_window_command_queue.push(DisplayCommand::CloseCurrentTab);
+            self.push(DisplayCommand::CloseCurrentTab);
         }
     }
     
@@ -109,13 +107,10 @@ impl DisplayCommandQueue {
         let term_tab_collection = term_tab_collection_arc.lock();
 
         if win_id != None && term_tab_collection.is_empty() {
-            multi_window_command_queue.push(DisplayCommand::CloseWindow(win_id.unwrap()));
+            display_context_map.command_close_window(&win_id.unwrap());
         }
     }
     
-
-    display_context_map.run_window_state_commands(&mut multi_window_command_queue);
-
     if display_context_map.is_empty() {
         *control_flow = ControlFlow::Exit;
         return true;
@@ -173,17 +168,6 @@ impl DisplayContextMap {
     &self.map[window_id]
   }
 
-  pub fn run_window_state_commands(&mut self, display_command_queue: &mut DisplayCommandQueue) {
-    for command in display_command_queue.iterator() {
-      match command {
-        DisplayCommand::ActivateWindow(window_id) => self.command_activate_window(window_id),
-        DisplayCommand::DeactivateWindow(window_id) => self.command_deactivate_window(window_id),
-        DisplayCommand::CloseWindow(window_id) => self.command_close_window(window_id),
-        _ => { }
-      }
-    }
-  }
-
   pub fn run_user_input_commands(&mut self, 
     display_command_queue: &mut DisplayCommandQueue,
     size_info: SizeInfo,
@@ -232,6 +216,8 @@ impl DisplayContextMap {
   }
   
   fn command_close_window(&mut self, window_id: &WindowId) {
+    println!("Close window");
+
     let display_ctx = self.get_active_display_context();
     let display_arc = display_ctx.display.clone();
     let display = display_arc.lock();
