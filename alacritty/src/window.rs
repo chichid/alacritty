@@ -43,8 +43,8 @@ use alacritty_terminal::term::{SizeInfo, Term};
 
 use crate::config::Config;
 use crate::multi_window::glutin_context_tracker::{
-    ContextTracker, SHARED_GL_CONTEXT_TRACKER, 
-    ContextCurrentWrapper, ContextWrapper, ContextId
+    SHARED_GL_CONTEXT_TRACKER, ContextCurrentWrapper, 
+    ContextWrapper, ContextId
 };
 
 // Create a singleton context tracker
@@ -184,10 +184,6 @@ impl Window {
         };
 
         Ok(Window { current_mouse_cursor, mouse_visible: true, context_id })
-    }
-
-    pub fn focus(&mut self) {
-        unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
     }
 
     pub fn set_inner_size(&mut self, size: LogicalSize) {
