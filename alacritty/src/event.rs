@@ -42,7 +42,7 @@ use crate::display::Display;
 use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
 use crate::term_tabs::TermTabCollection;
-use crate::display_context::{DisplayCommandQueue, DisplayCommand};
+use crate::display_context::{DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
 use crate::display_context::WindowContext;
 use crate::display_context::DisplayContextMap;
 
@@ -359,17 +359,19 @@ impl Processor {
                 info!("glutin event: {:?}", event);
             }
             
+            // Multi window command queue: Manages windows and returns the currently active window
             let mut multi_window_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            if multi_window_command_queue.handle_multi_window_events(
-                &mut display_context_map, 
-                &event, 
-                control_flow
-            ) {
-                return;
+            match multi_window_command_queue.handle_multi_window_events(&mut display_context_map, &event) {
+                DisplayCommandResult::RestartLoop => return,
+                DisplayCommandResult::Exit => {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                },
+                _ => {}
             }
-
+            
             match &event {
                 // Process events
                 GlutinEvent::EventsCleared => {

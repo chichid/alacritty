@@ -35,7 +35,8 @@ pub enum DisplayCommand {
 #[derive (Clone)]
 pub enum DisplayCommandResult {
   Exit,
-  Poll,
+  Continue,
+  RestartLoop,
   Redraw,
 }
 
@@ -66,8 +67,7 @@ impl DisplayCommandQueue {
     &mut self, 
     display_context_map: &mut DisplayContextMap, 
     event: &GlutinEvent<Event>,
-    control_flow: &mut ControlFlow
-  ) -> bool {
+  ) -> DisplayCommandResult {
     use glutin::event::WindowEvent::*;
 
     let mut is_close_requested = false;
@@ -112,11 +112,10 @@ impl DisplayCommandQueue {
     }
     
     if display_context_map.is_empty() {
-        *control_flow = ControlFlow::Exit;
-        return true;
+      return DisplayCommandResult::Exit
     }
 
-    false
+    DisplayCommandResult::Continue
   }
 }
 
