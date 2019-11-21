@@ -22,7 +22,7 @@ pub struct TermTab<T> {
 }
 
 impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
-    pub fn new(config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
+    pub(super) fn new(config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
         // Create new native clipboard
         #[cfg(not(any(target_os = "macos", windows)))]
         let clipboard = Clipboard::new(display.window.wayland_display());

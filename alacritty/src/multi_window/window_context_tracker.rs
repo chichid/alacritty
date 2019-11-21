@@ -66,17 +66,17 @@ impl WindowContextTracker {
     self.map[window_id].clone()
   }
 
-  pub(super) fn command_activate_window(&mut self, window_id: WindowId) {
+  pub(super) fn activate_window(&mut self, window_id: WindowId) {
     self.active_window_id = Some(window_id);
   }
 
-  pub(super) fn command_deactivate_window(&mut self, window_id: WindowId) {
+  pub(super) fn deactivate_window(&mut self, window_id: WindowId) {
     if self.active_window_id != None && self.active_window_id.unwrap() == window_id {
       self.active_window_id = None;
     }
   }
   
-  pub(super) fn command_close_window(&mut self, window_id: WindowId) {
+  pub(super) fn close_window(&mut self, window_id: WindowId) {
     let display_ctx = self.get_active_display_context();
     let display_arc = display_ctx.display.clone();
     let display = display_arc.lock();
@@ -90,7 +90,7 @@ impl WindowContextTracker {
     self.map.remove_entry(&window_id);
   }
 
-  pub(super) fn command_create_new_display(&mut self, 
+  pub(super) fn create_display(&mut self, 
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
@@ -108,27 +108,6 @@ impl WindowContextTracker {
     self.active_window_id = Some(window_id);
 
     Ok(())
-  }
-
-  pub(super) fn command_create_new_tab(&mut self, tab_collection: &mut TermTabCollection<EventProxy>) {
-    // TODO may be we need a window_id here as well
-    info!("command_create_new_tab");
-    tab_collection.push_tab();
-  }
-
-  pub(super) fn command_activate_tab(&mut self, tab_id: usize, tab_collection: &mut TermTabCollection<EventProxy>) {
-    info!("command_activate_tab_id tab_id: {}", tab_id);
-    tab_collection.activate_tab(tab_id);
-  }
-
-  pub(super) fn command_close_current_tab(&mut self, tab_collection: &mut TermTabCollection<EventProxy>) {
-    info!("command_close_current_tab");
-    tab_collection.close_current_tab();
-  }
-
-  pub(super) fn command_close_tab(&mut self, tab_id: usize, tab_collection: &mut TermTabCollection<EventProxy>) {
-    info!("command_close_tab tab_id: {}", tab_id);
-    tab_collection.close_tab(tab_id);
   }
 }
 

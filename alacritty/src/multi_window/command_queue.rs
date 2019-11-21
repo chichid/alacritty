@@ -63,14 +63,14 @@ impl DisplayCommandQueue {
         match event {
             Focused(is_focused) => {
                 if *is_focused {
-                    context_tracker.command_activate_window(*window_id);
+                    context_tracker.activate_window(*window_id);
                 } else {
-                    context_tracker.command_deactivate_window(*window_id);
+                    context_tracker.deactivate_window(*window_id);
                 }
             },
             CloseRequested => {
                 is_close_requested = true;
-                context_tracker.command_close_window(*window_id);
+                context_tracker.close_window(*window_id);
             }
             _ => {}
         }
@@ -90,7 +90,7 @@ impl DisplayCommandQueue {
         let term_tab_collection = term_tab_collection_arc.lock();
 
         if term_tab_collection.is_empty() {
-            context_tracker.command_close_window(win_id.unwrap());
+            context_tracker.close_window(win_id.unwrap());
         }
     }
     
@@ -111,17 +111,17 @@ impl DisplayCommandQueue {
     // Drain the displaycommand queue
     let mut is_dirty = false;
     let current_display_ctx = context_tracker.get_active_display_context();
-    let current_term_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
+    let current_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
 
     for command in self.queue.iter() {
       let mut did_run_command = true;
 
       match command {
-        DisplayCommand::CreateDisplay => context_tracker.command_create_new_display(config, window_event_loop, event_proxy)?,
-        DisplayCommand::CreateTab => context_tracker.command_create_new_tab(current_term_tab_collection),
-        DisplayCommand::ActivateTab(tab_id) => context_tracker.command_activate_tab(*tab_id, current_term_tab_collection),
-        DisplayCommand::CloseCurrentTab => context_tracker.command_close_current_tab(current_term_tab_collection),
-        DisplayCommand::CloseTab(tab_id) => context_tracker.command_close_tab(*tab_id, current_term_tab_collection),
+        DisplayCommand::CreateDisplay => { context_tracker.create_display(config, window_event_loop, event_proxy)?; },
+        DisplayCommand::CreateTab => { current_tab_collection.push_tab(); },
+        DisplayCommand::ActivateTab(tab_id) => { current_tab_collection.activate_tab(*tab_id); },
+        DisplayCommand::CloseCurrentTab => { current_tab_collection.close_current_tab(); },
+        DisplayCommand::CloseTab(tab_id) => { current_tab_collection.close_tab(*tab_id); },
         _ => { did_run_command = false }
       }
 
@@ -131,7 +131,7 @@ impl DisplayCommandQueue {
     }
 
     // Commit any changes to the tab collection
-    let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
+    let is_tab_collection_dirty = current_tab_collection.commit_changes(
       config, 
       size_info,
     );
