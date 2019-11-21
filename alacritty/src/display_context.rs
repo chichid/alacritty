@@ -20,6 +20,9 @@ use crate::term_tabs::TermTabCollection;
 
 #[derive (Clone)]
 pub enum DisplayCommand {
+  ActivateWindow(WindowId),
+  DeactivateWindow(WindowId),
+  CloseWindow(WindowId),
   CreateDisplay,
   CreateTab,
   ActivateTab(usize), // tab_id
@@ -27,9 +30,16 @@ pub enum DisplayCommand {
   CloseTab(usize),// tab_id
 }
 
+#[derive (Clone)]
+pub enum DisplayCommandResult {
+  Exit,
+  Poll,
+  Redraw,
+}
+
 #[derive (Default)]
 pub struct DisplayCommandQueue {
-  queue: Vec<DisplayCommand>
+  queue: Vec<DisplayCommand>,
 }
 
 impl DisplayCommandQueue {
@@ -97,8 +107,6 @@ impl DisplayContextMap {
   }
 
   pub fn exit(&mut self, window_id: WindowId) {
-    self.pending_exit = Some(window_id);
-
     if self.active_window_id.unwrap() == window_id {
       self.active_window_id = None;
     }
@@ -106,22 +114,23 @@ impl DisplayContextMap {
     self.map.remove_entry(&window_id);
   }
 
-  pub fn activate_window(&mut self, window_id: WindowId) {
-    self.active_window_id = Some(window_id);
-  }
-
-  pub fn deactivate_window(&mut self, window_id: WindowId) {
-    if self.active_window_id != None && self.active_window_id.unwrap() == window_id {
-      self.active_window_id = None;
-    }
-  }
-
   pub fn get_active_display_context(&self) -> &DisplayContext {
     let window_id = &self.active_window_id.unwrap();
     &self.map[window_id]
   }
 
-  pub fn commit_changes(&mut self, 
+  pub fn run_window_state_commands(&mut self, display_command_queue: &mut DisplayCommandQueue) {
+    for command in display_command_queue.iterator() {
+      match command {
+        DisplayCommand::ActivateWindow(window_id) => self.command_activate_window(window_id),
+        DisplayCommand::DeactivateWindow(window_id) => self.command_deactivate_window(window_id),
+        DisplayCommand::CloseWindow(window_id) => self.command_close_window(window_id),
+        _ => { }
+      }
+    }
+  }
+
+  pub fn run_user_input_commands(&mut self, 
     display_command_queue: &mut DisplayCommandQueue,
     size_info: SizeInfo,
     current_term_tab_collection: &mut TermTabCollection<EventProxy>,
@@ -129,12 +138,6 @@ impl DisplayContextMap {
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
-    // Handle Exit
-    let did_exit = self.pending_exit != None;
-    if did_exit {
-      self.pending_exit = None;
-    }
-    
     // Handle Window Activation
     let did_activate_screen = self.pending_window_to_activate != None;    
     if did_activate_screen {
@@ -149,18 +152,50 @@ impl DisplayContextMap {
     );
 
     // Drain the display command queue
+    let mut is_dirty = false;
+
     for command in display_command_queue.iterator() {
+      let mut did_run_command = true;
+
       match command {
         DisplayCommand::CreateDisplay => self.command_create_new_display(config, window_event_loop, event_proxy)?,
         DisplayCommand::CreateTab => self.command_create_new_tab(current_term_tab_collection),
         DisplayCommand::ActivateTab(tab_id) => self.command_activate_tab(*tab_id, current_term_tab_collection),
         DisplayCommand::CloseCurrentTab => self.command_close_current_tab(current_term_tab_collection),
         DisplayCommand::CloseTab(tab_id) => self.command_close_tab(*tab_id, current_term_tab_collection),
-        _ => {}
+        _ => { did_run_command = false }
+      }
+
+      if did_run_command {
+        is_dirty = true;
       }
     }
 
-    Ok(did_exit || did_activate_screen || is_tab_collection_dirty)
+    Ok(is_dirty || is_tab_collection_dirty)
+  }
+
+  fn command_activate_window(&mut self, window_id: &WindowId) {
+    self.active_window_id = Some(*window_id);
+  }
+
+  fn command_deactivate_window(&mut self, window_id: &WindowId) {
+    if self.active_window_id != None && self.active_window_id.unwrap() == *window_id {
+      self.active_window_id = None;
+    }
+  }
+  
+  fn command_close_window(&mut self, window_id: &WindowId) {
+    let display_ctx = self.get_active_display_context();
+    let display_arc = display_ctx.display.clone();
+    let display = display_arc.lock();
+    let window = &display.window;
+    window.close();
+    
+    if self.active_window_id.unwrap() == *window_id {
+      self.active_window_id = None;
+    }
+
+    self.map.remove_entry(window_id);
   }
 
   fn command_create_new_display(&mut self, 

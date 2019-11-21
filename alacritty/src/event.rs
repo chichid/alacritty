@@ -368,24 +368,21 @@ impl Processor {
                 use glutin::event::WindowEvent::*;
                 match &event{
                     Focused(is_focused) => {
-                        if *is_focused {
-                            self.display_context_map.activate_window(*window_id);
+                        display_command_queue.push(if *is_focused {
+                            DisplayCommand::ActivateWindow(*window_id)
                         } else {
-                            self.display_context_map.deactivate_window(*window_id);
-                        }
+                            DisplayCommand::DeactivateWindow(*window_id)
+                        })
                     },
                     CloseRequested => {
                         is_close_requested = true;
-                        let display_ctx = self.display_context_map.get_active_display_context();
-                        let display_arc = display_ctx.display.clone();
-                        let display = display_arc.lock();
-                        let window = &display.window;
-                        window.close();
-                        self.display_context_map.exit(*window_id);
+                        display_command_queue.push(DisplayCommand::CloseWindow(*window_id))
                     }
                     _ => {}
                 }
             };
+
+            self.display_context_map.run_window_state_commands(&mut display_command_queue);
 
             if self.display_context_map.is_empty() {
                 *control_flow = ControlFlow::Exit;
@@ -395,7 +392,7 @@ impl Processor {
             if !self.display_context_map.has_active_display() {
                 return;
             }
-            
+
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
@@ -420,7 +417,7 @@ impl Processor {
                     return;
                 },
             }
-
+            
             let display_ctx = self.display_context_map.get_active_display_context();
             let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
             let mut term_tab_collection = term_tab_collection_arc.lock();
@@ -483,7 +480,7 @@ impl Processor {
             
             let did_create_new_display = self.display_context_map.is_pending_create_display();
 
-            match self.display_context_map.commit_changes(
+            match self.display_context_map.run_user_input_commands(
                 &mut display_command_queue,
                 size_info,
                 &mut term_tab_collection,
