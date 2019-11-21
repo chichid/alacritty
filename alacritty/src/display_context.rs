@@ -65,7 +65,7 @@ impl DisplayCommandQueue {
 
   pub fn handle_multi_window_events(
     &mut self, 
-    display_context_map: &mut DisplayContextMap, 
+    context_tracker: &mut WindowContextTracker, 
     event: &GlutinEvent<Event>,
   ) -> DisplayCommandResult {
     use glutin::event::WindowEvent::*;
@@ -80,14 +80,14 @@ impl DisplayCommandQueue {
         match event {
             Focused(is_focused) => {
                 if *is_focused {
-                    display_context_map.command_activate_window(window_id);
+                    context_tracker.command_activate_window(window_id);
                 } else {
-                    display_context_map.command_deactivate_window(window_id);
+                    context_tracker.command_deactivate_window(window_id);
                 }
             },
             CloseRequested => {
                 is_close_requested = true;
-                display_context_map.command_close_window(window_id);
+                context_tracker.command_close_window(window_id);
             }
             _ => {}
         }
@@ -101,17 +101,17 @@ impl DisplayCommandQueue {
     }
     
     // Handle Closing all the tabs within a window (close the window)
-    if display_context_map.has_active_display() {
-        let display_ctx = display_context_map.get_active_display_context();
+    if context_tracker.has_active_display() {
+        let display_ctx = context_tracker.get_active_display_context();
         let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
         let term_tab_collection = term_tab_collection_arc.lock();
 
         if win_id != None && term_tab_collection.is_empty() {
-            display_context_map.command_close_window(&win_id.unwrap());
+            context_tracker.command_close_window(&win_id.unwrap());
         }
     }
     
-    if display_context_map.is_empty() {
+    if context_tracker.is_empty() {
       return DisplayCommandResult::Exit
     }
 
@@ -119,15 +119,15 @@ impl DisplayCommandQueue {
   }
 }
 
-pub struct DisplayContextMap {
+pub struct WindowContextTracker {
   active_window_id: Option<WindowId>,
   map: HashMap<WindowId, WindowContext>,
   estimated_dpr: f64,
 }
 
-impl DisplayContextMap {
-  pub fn new() -> DisplayContextMap {
-    DisplayContextMap {
+impl WindowContextTracker {
+  pub fn new() -> WindowContextTracker {
+    WindowContextTracker {
       active_window_id: None,
       estimated_dpr: 0.0,
       map: HashMap::new(),

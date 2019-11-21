@@ -38,13 +38,10 @@ use alacritty_terminal::util::{limit, start_daemon};
 
 use crate::config;
 use crate::config::Config;
-use crate::display::Display;
 use crate::input::{self, FONT_SIZE_STEP};
 use crate::window::Window;
-use crate::term_tabs::TermTabCollection;
 use crate::display_context::{DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
-use crate::display_context::WindowContext;
-use crate::display_context::DisplayContextMap;
+use crate::display_context::WindowContextTracker;
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -347,7 +344,7 @@ impl Processor {
 
     /// Run the event loop.
     pub fn run(&mut self, 
-        mut display_context_map: DisplayContextMap,
+        mut window_context_tracker: WindowContextTracker,
         mut window_event_loop: EventLoop<Event>, 
         event_proxy: &EventProxy
     ) {
@@ -363,7 +360,7 @@ impl Processor {
             let mut multi_window_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            match multi_window_command_queue.handle_multi_window_events(&mut display_context_map, &event) {
+            match multi_window_command_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
                 DisplayCommandResult::RestartLoop => return,
                 DisplayCommandResult::Exit => {
                     *control_flow = ControlFlow::Exit;
@@ -392,9 +389,9 @@ impl Processor {
                 },
             }
             
-            if !display_context_map.has_active_display() { return; }
+            if !window_context_tracker.has_active_display() { return; }
 
-            let display_ctx = display_context_map.get_active_display_context();
+            let display_ctx = window_context_tracker.get_active_display_context();
             let display_arc = display_ctx.display.clone();
             let mut display = display_arc.lock();
             let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
@@ -433,10 +430,10 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
             
-            if term_tab_collection.is_empty() || !display_context_map.has_active_display() { return; }
+            if term_tab_collection.is_empty() || !window_context_tracker.has_active_display() { return; }
 
             let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
-            need_redraw = match display_context_map.run_user_input_commands(
+            need_redraw = match window_context_tracker.run_user_input_commands(
                 &mut multi_window_command_queue,
                 size_info,
                 &mut term_tab_collection,

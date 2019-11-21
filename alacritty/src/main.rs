@@ -60,7 +60,7 @@ use crate::cli::Options;
 use crate::config::monitor::Monitor;
 use crate::config::Config;
 use crate::event::{EventProxy, Processor};
-use crate::display_context::DisplayContextMap;
+use crate::display_context::WindowContextTracker;
 
 fn main() {
     panic::attach_handler();
@@ -133,8 +133,8 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     // Create a display context map
     //
     // The display context map manages the windows and tabs for the entire application
-    let mut display_context_map = DisplayContextMap::new();
-    display_context_map.initialize(&config, &window_event_loop, &event_proxy)?;
+    let mut window_context_tracker = WindowContextTracker::new();
+    window_context_tracker.initialize(&config, &window_event_loop, &event_proxy)?;
 
     // Create a config monitor when config was loaded from path
     //
@@ -158,7 +158,7 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     info!("Initialisation complete");
 
     // Start event loop and block until shutdown
-    processor.run(display_context_map, window_event_loop, &event_proxy);
+    processor.run(window_context_tracker, window_event_loop, &event_proxy);
     
     // Shutdown PTY parser event loop
     // TODO cleanup terminal collection
