@@ -22,6 +22,7 @@ use crate::term_tabs::TermTabCollection;
 pub enum DisplayCommand {
   CreateDisplay,
   CreateTab,
+  ActivateTab(usize), // tab_id
 }
 
 #[derive (Default)]
@@ -150,6 +151,7 @@ impl DisplayContextMap {
       match command {
         DisplayCommand::CreateDisplay => self.command_create_new_display(config, window_event_loop, event_proxy)?,
         DisplayCommand::CreateTab => self.command_create_new_tab(current_term_tab_collection),
+        DisplayCommand::ActivateTab(tab_id) => self.command_activate_tab(*tab_id, current_term_tab_collection),
         _ => {}
       }
     }
@@ -177,9 +179,15 @@ impl DisplayContextMap {
     Ok(())
   }
 
-  fn command_create_new_tab(&mut self, current_term_tab_collection: &mut TermTabCollection<EventProxy>) {
-    println!("Create a new tab");
-    current_term_tab_collection.push_tab();
+  fn command_create_new_tab(&mut self, tab_collection: &mut TermTabCollection<EventProxy>) {
+    // TODO may be we need a window_id here as well
+    info!("command_create_new_tab");
+    tab_collection.push_tab();
+  }
+
+  fn command_activate_tab(&mut self, tab_id: usize, tab_collection: &mut TermTabCollection<EventProxy>) {
+    println!("command_activate_tab_id");
+    tab_collection.activate_tab(tab_id);
   }
 }
 

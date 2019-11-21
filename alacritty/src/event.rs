@@ -210,12 +210,11 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_tab(&mut self) {
-        println!("lalsal");
         self.display_command_queue.push(DisplayCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.terminal_tab_collection.activate_tab(tab_id);
+        self.display_command_queue.push(DisplayCommand::ActivateTab(tab_id));
     }
 
     fn close_current_tab(&mut self) {
