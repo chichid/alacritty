@@ -159,9 +159,9 @@ impl WindowContextTracker {
     self.active_window_id != None
   }
 
-  pub fn get_active_display_context(&self) -> &WindowContext {
+  pub fn get_active_display_context(&self) -> WindowContext {
     let window_id = &self.active_window_id.unwrap();
-    &self.map[window_id]
+    self.map[window_id].clone()
   }
 
   pub fn run_user_input_commands(&mut self, 
@@ -267,6 +267,7 @@ impl WindowContextTracker {
   }
 }
 
+#[derive (Clone)]
 pub struct WindowContext {
   pub window_id: WindowId,
   pub display: Arc<FairMutex<Display>>,

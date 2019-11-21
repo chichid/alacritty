@@ -391,10 +391,8 @@ impl Processor {
             if !window_context_tracker.has_active_display() { return; }
 
             let display_ctx = window_context_tracker.get_active_display_context();
-            let display_arc = display_ctx.display.clone();
-            let mut display = display_arc.lock();
-            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-            let mut term_tab_collection = term_tab_collection_arc.lock();
+            let mut display = display_ctx.display.lock();
+            let mut term_tab_collection = display_ctx.term_tab_collection.lock();
             let active_term_mutex = term_tab_collection.get_active_tab().clone();
             let mut terminal_ctx = active_term_mutex.lock();
             let terminal_arc = terminal_ctx.terminal.clone();
