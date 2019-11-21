@@ -176,16 +176,19 @@ pub enum Action {
     /// Spawn a new instance of Alacritty.
     SpawnNewInstance,
 
-    /// Spawn a new tab inside an alacritty terminal
-    SpawnNewTab,
+    /// Create a new window in the current Alacritty Process
+    CreateNewWindow,
 
-    /// Activate Tab
+    /// Create a new tab within the current Alacritty Window
+    CreateNewTab,
+
+    /// Activate Tab within the current Alacritty Window
     ActivateTab(usize),
 
-    /// Activate Tab
+    /// Activate Tab within the current Alacritty Window
     CloseCurrentTab,
 
-    /// Activate Tab
+    /// Close a specific Tab within the current Alacritty Window
     CloseTab(usize),
 
     /// Activate Tab
@@ -450,10 +453,10 @@ fn default_window_navigation_bindings() -> Vec<KeyBinding> {
         KeyBinding;
 
         // Windows
-        Key::N,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::SpawnNewInstance;
+        Key::N,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CreateNewWindow;
 
         // Tabs
-        Key::T,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::SpawnNewTab;
+        Key::T,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CreateNewTab;
         Key::W,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CloseCurrentTab;
         Key::Key1,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(0);
         Key::Key2,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(1);

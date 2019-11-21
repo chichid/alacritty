@@ -83,7 +83,8 @@ pub trait ActionContext<T: EventListener> {
     fn terminal(&self) -> &Term<T>;
     fn terminal_mut(&mut self) -> &mut Term<T>;
     fn spawn_new_instance(&mut self);
-    fn spawn_new_tab(&mut self);
+    fn create_new_window(&mut self);
+    fn create_new_tab(&mut self);
     fn activate_tab(&mut self, tab_id: usize);
     fn close_current_tab(&mut self);
     fn close_tab(&mut self, tab_id: usize);
@@ -156,7 +157,8 @@ impl<T: EventListener> Execute<T> for Action {
             Action::ClearHistory => ctx.terminal_mut().clear_screen(ClearMode::Saved),
             Action::ClearLogNotice => ctx.pop_message(),
             Action::SpawnNewInstance => ctx.spawn_new_instance(),
-            Action::SpawnNewTab => ctx.spawn_new_tab(),
+            Action::CreateNewWindow => ctx.create_new_window(),
+            Action::CreateNewTab => ctx.create_new_tab(),
             Action::ActivateTab(ref t) => ctx.activate_tab(*t),
             Action::CloseCurrentTab => ctx.close_current_tab(),
             Action::CloseTab(ref t) => ctx.close_tab(*t),

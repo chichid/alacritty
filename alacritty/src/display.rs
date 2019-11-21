@@ -14,14 +14,13 @@
 
 //! The display subsystem including window management, font rasterization, and
 //! GPU drawing.
-use glutin::event_loop::EventLoopWindowTarget;
 use std::f64;
 use std::fmt;
 use std::time::Instant;
 
 use glutin::dpi::{PhysicalPosition, PhysicalSize};
 use glutin::event::ModifiersState;
-use glutin::event_loop::EventLoop;
+use glutin::event_loop::EventLoopWindowTarget;
 use glutin::window::CursorIcon;
 use log::{debug, info};
 use parking_lot::MutexGuard;
@@ -327,7 +326,6 @@ impl Display {
 
         // Subtract message bar lines from pty size
         if let Some(message) = message_buffer.message() {
-            println!("Terminal resized {:?}", pty_size);
             let lines = message.text(&self.size_info).len();
             pty_size.height -= pty_size.cell_height * lines as f32;
         }

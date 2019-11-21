@@ -1,8 +1,4 @@
 //! Process window events
-use glutin::window::WindowId;
-use std::sync::Arc;
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::event_loop::Notifier;
 use std::borrow::Cow;
 use std::cmp::max;
 use std::env;
@@ -10,10 +6,11 @@ use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use std::time::Instant;
 
+use glutin::window::WindowId;
 use glutin::dpi::PhysicalSize;
-use glutin::event_loop::EventLoop as GlutinEventLoop;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
 use glutin::platform::desktop::EventLoopExtDesktop;
@@ -35,6 +32,8 @@ use alacritty_terminal::term::{SizeInfo, Term};
 #[cfg(not(windows))]
 use alacritty_terminal::tty;
 use alacritty_terminal::util::{limit, start_daemon};
+use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::event_loop::Notifier;
 
 use crate::config;
 use crate::config::Config;
@@ -202,10 +201,35 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
+        let alacritty = env::args().next().unwrap();
+
+        #[cfg(unix)]
+        let args = {
+            #[cfg(not(target_os = "freebsd"))]
+            let proc_prefix = "";
+            #[cfg(target_os = "freebsd")]
+            let proc_prefix = "/compat/linux";
+            let link_path = format!("{}/proc/{}/cwd", proc_prefix, tty::child_pid());
+            if let Ok(path) = fs::read_link(link_path) {
+                vec!["--working-directory".into(), path]
+            } else {
+                Vec::new()
+            }
+        };
+        #[cfg(not(unix))]
+        let args: Vec<String> = Vec::new();
+
+        match start_daemon(&alacritty, &args) {
+            Ok(_) => debug!("Started new Alacritty process: {} {:?}", alacritty, args),
+            Err(_) => warn!("Unable to start new Alacritty process: {} {:?}", alacritty, args),
+        }
+    }
+
+    fn create_new_window(&mut self) {
         self.multi_window_queue.push(MultiWindowCommand::CreateDisplay);
     }
 
-    fn spawn_new_tab(&mut self) {
+    fn create_new_tab(&mut self) {
         self.multi_window_queue.push(MultiWindowCommand::CreateTab);
     }
 
@@ -368,6 +392,8 @@ impl Processor {
                 },
                 _ => {}
             }
+
+            if !window_context_tracker.has_active_display() { return; }
             
             match &event {
                 // Process events
@@ -378,7 +404,6 @@ impl Processor {
                         return;
                     }
                 },
-
                 // Buffer events
                 _ => {
                     *control_flow = ControlFlow::Poll;
@@ -389,8 +414,6 @@ impl Processor {
                 },
             }
             
-            if !window_context_tracker.has_active_display() { return; }
-
             let display_ctx = window_context_tracker.get_active_display_context();
             let mut display = display_ctx.display.lock();
             let active_tab = display_ctx.get_active_tab();
@@ -418,7 +441,6 @@ impl Processor {
                 font_size: &mut self.font_size,
                 config: &mut self.config,
             };
-
             let mut processor =
                  input::Processor::new(context, &urls, &highlighted_url);
 
@@ -574,7 +596,6 @@ impl Processor {
                         }
                     },
                     DroppedFile(path) => {
-                        // TODO not sure why I need to import the ActionContext here
                         use crate::input::ActionContext;
                         let path: String = path.to_string_lossy().into();
                         processor.ctx.write_to_pty(path.into_bytes());
