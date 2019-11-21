@@ -58,7 +58,7 @@ use crate::cli::Options;
 use crate::config::monitor::Monitor;
 use crate::config::Config;
 use crate::event::{EventProxy, Processor};
-use crate::multi_window::WindowContextTracker;
+use crate::multi_window::window_context_tracker::WindowContextTracker;
 
 fn main() {
     panic::attach_handler();

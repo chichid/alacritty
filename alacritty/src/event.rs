@@ -39,8 +39,9 @@ use alacritty_terminal::util::{limit, start_daemon};
 use crate::config;
 use crate::config::Config;
 use crate::input::{self, FONT_SIZE_STEP};
-use crate::window::Window;
-use crate::multi_window::{WindowContextTracker, DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
+use crate::window::Window; 
+use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::multi_window::command_queue::{ DisplayCommandQueue, DisplayCommand, DisplayCommandResult};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
