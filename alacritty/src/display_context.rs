@@ -18,7 +18,7 @@ use crate::display::Display;
 use crate::config::Config;
 use crate::term_tabs::TermTabCollection;
 
-#[derive (Clone)]
+#[derive (Clone, PartialEq)]
 pub enum DisplayCommand {
   ActivateWindow(WindowId),
   DeactivateWindow(WindowId),
@@ -40,15 +40,24 @@ pub enum DisplayCommandResult {
 #[derive (Default)]
 pub struct DisplayCommandQueue {
   queue: Vec<DisplayCommand>,
+  has_create: bool,
 }
 
 impl DisplayCommandQueue {
   pub fn push(&mut self, command: DisplayCommand) {
+    if command == DisplayCommand::CreateDisplay {
+      self.has_create = true;
+    }
+
     self.queue.push(command);
   }
 
   pub fn iterator(&self) -> Iter<DisplayCommand> {
     self.queue.iter()
+  }
+
+  pub fn has_create_display_command(&self) -> bool {
+    self.has_create
   }
 }
 
@@ -56,10 +65,6 @@ pub struct DisplayContextMap {
   active_window_id: Option<WindowId>,
   map: HashMap<WindowId, DisplayContext>,
   estimated_dpr: f64,
-  pending_create_display: bool,
-  // TODO maybe move to display
-  pending_window_to_activate: Option<WindowId>,
-  pending_exit: Option<WindowId>
 }
 
 impl DisplayContextMap {
@@ -68,9 +73,6 @@ impl DisplayContextMap {
       active_window_id: None,
       estimated_dpr: 0.0,
       map: HashMap::new(),
-      pending_create_display: false,
-      pending_window_to_activate: None,
-      pending_exit: None,
     }
   }
 
@@ -98,20 +100,8 @@ impl DisplayContextMap {
     self.map.is_empty()
   }
 
-  pub fn is_pending_create_display(&self) -> bool {
-    self.pending_create_display
-  }
-
   pub fn has_active_display(&mut self) -> bool{
     self.active_window_id != None
-  }
-
-  pub fn exit(&mut self, window_id: WindowId) {
-    if self.active_window_id.unwrap() == window_id {
-      self.active_window_id = None;
-    }
-
-    self.map.remove_entry(&window_id);
   }
 
   pub fn get_active_display_context(&self) -> &DisplayContext {
@@ -138,19 +128,6 @@ impl DisplayContextMap {
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
-    // Handle Window Activation
-    let did_activate_screen = self.pending_window_to_activate != None;    
-    if did_activate_screen {
-      self.active_window_id = self.pending_window_to_activate;
-      self.pending_window_to_activate = None;      
-    }
-
-    // Commit any changes to the tab collection
-    let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
-      config, 
-      size_info,
-    );
-
     // Drain the display command queue
     let mut is_dirty = false;
 
@@ -170,6 +147,12 @@ impl DisplayContextMap {
         is_dirty = true;
       }
     }
+
+    // Commit any changes to the tab collection
+    let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
+      config, 
+      size_info,
+    );
 
     Ok(is_dirty || is_tab_collection_dirty)
   }

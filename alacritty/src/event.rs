@@ -1,4 +1,5 @@
 //! Process window events
+use glutin::window::WindowId;
 use std::sync::Arc;
 use alacritty_terminal::sync::FairMutex;
 use crate::display_context::DisplayContext;
@@ -61,7 +62,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
-    pub display_command_queue: &'a mut DisplayCommandQueue,
+    pub multi_window_command_queue: &'a mut DisplayCommandQueue,
     pub display_context_map: &'a mut DisplayContextMap,
     pub terminal_tab_collection: &'a mut TermTabCollection<T>,
     pub size_info: &'a mut SizeInfo,
@@ -206,23 +207,23 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        self.display_command_queue.push(DisplayCommand::CreateDisplay);
+        self.multi_window_command_queue.push(DisplayCommand::CreateDisplay);
     }
 
     fn spawn_new_tab(&mut self) {
-        self.display_command_queue.push(DisplayCommand::CreateTab);
+        self.multi_window_command_queue.push(DisplayCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.display_command_queue.push(DisplayCommand::ActivateTab(tab_id));
+        self.multi_window_command_queue.push(DisplayCommand::ActivateTab(tab_id));
     }
 
     fn close_current_tab(&mut self) {
-        self.display_command_queue.push(DisplayCommand::CloseCurrentTab);
+        self.multi_window_command_queue.push(DisplayCommand::CloseCurrentTab);
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        self.display_command_queue.push(DisplayCommand::CloseTab(tab_id));
+        self.multi_window_command_queue.push(DisplayCommand::CloseTab(tab_id));
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
@@ -352,53 +353,21 @@ impl Processor {
     /// Run the event loop.
     pub fn run(&mut self, mut window_event_loop: EventLoop<Event>, event_proxy: &EventProxy) {
         let mut event_queue = Vec::new();
-        let mut pending_display_context_refesh = false;
+        let mut need_redraw = false;
 
         window_event_loop.run_return(|event, event_loop, control_flow| {   
             if self.config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
             
-            let mut is_close_requested = false;
-            let mut is_user_exit = false;
-            let mut display_command_queue = DisplayCommandQueue::default();
+            let mut multi_window_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
-                use glutin::event::WindowEvent::*;
-                match &event{
-                    Focused(is_focused) => {
-                        display_command_queue.push(if *is_focused {
-                            DisplayCommand::ActivateWindow(*window_id)
-                        } else {
-                            DisplayCommand::DeactivateWindow(*window_id)
-                        })
-                    },
-                    CloseRequested => {
-                        is_close_requested = true;
-                        display_command_queue.push(DisplayCommand::CloseWindow(*window_id))
-                    }
-                    _ => {}
-                }
-            };
-
-            self.display_context_map.run_window_state_commands(&mut display_command_queue);
-
-            if self.display_context_map.is_empty() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            if !self.display_context_map.has_active_display() {
+            if self.handle_multi_window_events(&event, control_flow) {
                 return;
             }
 
             match &event {
-                // Check for shutdown
-                GlutinEvent::UserEvent(Event::Exit) => {
-                    is_user_exit = true;
-                },
-
                 // Process events
                 GlutinEvent::EventsCleared => {
                     *control_flow = ControlFlow::Wait;
@@ -419,25 +388,10 @@ impl Processor {
             }
             
             let display_ctx = self.display_context_map.get_active_display_context();
-            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-            let mut term_tab_collection = term_tab_collection_arc.lock();
             let display_arc = display_ctx.display.clone();
             let mut display = display_arc.lock();
-
-            if term_tab_collection.is_empty() {
-                let window = &display.window;
-                self.display_context_map.exit(window.window_id());
-                window.close();
-                return;
-            }
-
-            // handle pty detach
-            if !is_close_requested && is_user_exit {
-                term_tab_collection.close_current_tab();
-                term_tab_collection.commit_changes(&self.config, display.size_info);
-                return;
-            }
-
+            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
+            let mut term_tab_collection = term_tab_collection_arc.lock();
             let active_term_mutex = term_tab_collection.get_active_tab().clone();
             let mut terminal_ctx = active_term_mutex.lock();
             let terminal_arc = terminal_ctx.terminal.clone();
@@ -450,7 +404,7 @@ impl Processor {
             let highlighted_url = display.highlighted_url.clone();
 
             let context = ActionContext {
-                display_command_queue: &mut display_command_queue,
+                multi_window_command_queue: &mut multi_window_command_queue,
                 display_context_map: &mut self.display_context_map,
                 terminal_tab_collection: &mut term_tab_collection,
                 terminal: &mut terminal,
@@ -478,10 +432,9 @@ impl Processor {
                 return;
             }
             
-            let did_create_new_display = self.display_context_map.is_pending_create_display();
-
-            match self.display_context_map.run_user_input_commands(
-                &mut display_command_queue,
+            let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
+            need_redraw = match self.display_context_map.run_user_input_commands(
+                &mut multi_window_command_queue,
                 size_info,
                 &mut term_tab_collection,
                 &self.config, 
@@ -503,7 +456,7 @@ impl Processor {
                 );
             }
 
-            if terminal.dirty || did_create_new_display {
+            if terminal.dirty || redraw_display {
                 terminal.dirty = false;
 
                 // Request immediate re-draw if visual bell animation is not finished yet
@@ -716,6 +669,68 @@ impl Processor {
             | GlutinEvent::LoopDestroyed => true,
             _ => false,
         }
+    }
+
+    /// Handle multi-window events
+    fn handle_multi_window_events(
+        &mut self, 
+        event: &GlutinEvent<Event>,
+        control_flow: &mut ControlFlow,
+    ) -> bool {
+        use glutin::event::WindowEvent::*;
+
+        let mut multi_window_command_queue = DisplayCommandQueue::default();
+
+        let mut is_close_requested = false;
+        let mut win_id = None;
+
+        // Handle Window Activate, Deactivate, Close Events
+        if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
+            win_id = Some(*window_id);
+
+            match event {
+                Focused(is_focused) => {
+                    multi_window_command_queue.push(if *is_focused {
+                        DisplayCommand::ActivateWindow(*window_id)
+                    } else {
+                        DisplayCommand::DeactivateWindow(*window_id)
+                    })
+                },
+                CloseRequested => {
+                    is_close_requested = true;
+                    multi_window_command_queue.push(DisplayCommand::CloseWindow(*window_id))
+                }
+                _ => {}
+            }
+        }
+
+        // handle pty detach (ex. when we type exit)
+        if let GlutinEvent::UserEvent(Event::Exit) = &event {
+            if !is_close_requested {
+                multi_window_command_queue.push(DisplayCommand::CloseCurrentTab);
+            }
+        }
+       
+        // Handle Closing all the tabs within a window (close the window)
+        if self.display_context_map.has_active_display() {
+            let display_ctx = self.display_context_map.get_active_display_context();
+            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
+            let term_tab_collection = term_tab_collection_arc.lock();
+
+            if win_id != None && term_tab_collection.is_empty() {
+                multi_window_command_queue.push(DisplayCommand::CloseWindow(win_id.unwrap()));
+            }
+        }
+        
+
+        self.display_context_map.run_window_state_commands(&mut multi_window_command_queue);
+
+        if self.display_context_map.is_empty() {
+            *control_flow = ControlFlow::Exit;
+            return true;
+        }
+
+        false
     }
 
     // TODO put this function back
