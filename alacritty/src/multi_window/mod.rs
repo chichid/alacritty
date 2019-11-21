@@ -1,5 +1,3 @@
-use crate::multi_window::term_tabs::TermTab;
-use crate::multi_window::term_tabs::TermTabCollection;
 use std::slice::Iter;
 use glutin::window::WindowId;
 use alacritty_terminal::term::SizeInfo;
@@ -13,13 +11,16 @@ use glutin::event::{Event as GlutinEvent};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::event::Event;
 
-mod term_tabs;
 pub mod glutin_context_tracker;
+pub mod term_tab;
+mod term_tab_collection;
 
 use crate::display::Error;
 use crate::event::{EventProxy};
 use crate::display::Display;
 use crate::config::Config;
+use crate::multi_window::term_tab::TermTab;
+use crate::multi_window::term_tab_collection::TermTabCollection;
 
 #[derive (Clone, PartialEq)]
 pub enum DisplayCommand {
