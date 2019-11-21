@@ -362,7 +362,11 @@ impl Processor {
             let mut multi_window_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            if self.handle_multi_window_events(&mut display_context_map, &event, control_flow) {
+            if multi_window_command_queue.handle_multi_window_events(
+                &mut display_context_map, 
+                &event, 
+                control_flow
+            ) {
                 return;
             }
 
@@ -666,69 +670,6 @@ impl Processor {
             | GlutinEvent::LoopDestroyed => true,
             _ => false,
         }
-    }
-
-    /// Handle multi-window events
-    fn handle_multi_window_events(
-        &mut self,
-        display_context_map: &mut DisplayContextMap,
-        event: &GlutinEvent<Event>,
-        control_flow: &mut ControlFlow,
-    ) -> bool {
-        use glutin::event::WindowEvent::*;
-
-        let mut multi_window_command_queue = DisplayCommandQueue::default();
-
-        let mut is_close_requested = false;
-        let mut win_id = None;
-
-        // Handle Window Activate, Deactivate, Close Events
-        if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
-            win_id = Some(*window_id);
-
-            match event {
-                Focused(is_focused) => {
-                    multi_window_command_queue.push(if *is_focused {
-                        DisplayCommand::ActivateWindow(*window_id)
-                    } else {
-                        DisplayCommand::DeactivateWindow(*window_id)
-                    })
-                },
-                CloseRequested => {
-                    is_close_requested = true;
-                    multi_window_command_queue.push(DisplayCommand::CloseWindow(*window_id))
-                }
-                _ => {}
-            }
-        }
-
-        // handle pty detach (ex. when we type exit)
-        if let GlutinEvent::UserEvent(Event::Exit) = &event {
-            if !is_close_requested {
-                multi_window_command_queue.push(DisplayCommand::CloseCurrentTab);
-            }
-        }
-       
-        // Handle Closing all the tabs within a window (close the window)
-        if display_context_map.has_active_display() {
-            let display_ctx = display_context_map.get_active_display_context();
-            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-            let term_tab_collection = term_tab_collection_arc.lock();
-
-            if win_id != None && term_tab_collection.is_empty() {
-                multi_window_command_queue.push(DisplayCommand::CloseWindow(win_id.unwrap()));
-            }
-        }
-        
-
-        display_context_map.run_window_state_commands(&mut multi_window_command_queue);
-
-        if display_context_map.is_empty() {
-            *control_flow = ControlFlow::Exit;
-            return true;
-        }
-
-        false
     }
 
     // TODO put this function back
