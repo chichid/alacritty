@@ -393,10 +393,9 @@ impl Processor {
             let display_ctx = window_context_tracker.get_active_display_context();
             let mut display = display_ctx.display.lock();
             let mut term_tab_collection = display_ctx.term_tab_collection.lock();
-            let active_term_mutex = term_tab_collection.get_active_tab().clone();
-            let mut terminal_ctx = active_term_mutex.lock();
-            let terminal_arc = terminal_ctx.terminal.clone();
-            let mut terminal = terminal_arc.lock();
+            let active_tab = term_tab_collection.get_active_tab();
+            let mut terminal = active_tab.terminal.lock();
+            let loop_tx = active_tab.loop_tx.clone();
 
             let mut display_update_pending = DisplayUpdate::default();
             
@@ -407,7 +406,7 @@ impl Processor {
             let context = ActionContext {
                 multi_window_command_queue: &mut multi_window_command_queue,
                 terminal: &mut terminal,
-                notifier: terminal_ctx.notifier.as_mut(),
+                notifier: &mut Notifier(loop_tx),
                 mouse: &mut self.mouse,
                 size_info: &mut size_info,
                 received_count: &mut self.received_count,
@@ -446,7 +445,7 @@ impl Processor {
             if !display_update_pending.is_empty() {
                 display.handle_update(
                     &mut terminal,
-                    terminal_ctx.resize_handle.as_mut(),
+                    active_tab.resize_handle.lock().as_mut(),
                     &self.message_buffer,
                     &self.config,
                     display_update_pending,

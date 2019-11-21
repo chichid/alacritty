@@ -1,4 +1,6 @@
+use alacritty_terminal::event_loop::Msg;
 use std::sync::Arc;
+use mio_extras::channel::{Sender};
 
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::event::OnResize;
@@ -6,7 +8,7 @@ use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::Term;
 use alacritty_terminal::term::SizeInfo;
-use alacritty_terminal::event_loop::{Notifier, EventLoop};
+use alacritty_terminal::event_loop::{EventLoop};
 use alacritty_terminal::tty;
 
 use crate::config::Config;
@@ -17,7 +19,7 @@ use std::os::unix::io::AsRawFd;
 pub struct TermTabCollection<T> {
     event_proxy: T,
     active_tab: usize,
-    term_collection: Vec<Arc<FairMutex<TermTab<T>>>>,
+    term_collection: Vec<TermTab<T>>,
     pending_tab_to_add: usize,
     pending_tab_activate: usize,
     pending_commit_delete_tab: bool,
@@ -59,8 +61,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.term_collection.is_empty()
     }
 
-    pub fn get_active_tab(&self) -> &Arc<FairMutex<TermTab<T>>> {
-        &self.term_collection[self.active_tab]
+    pub fn get_active_tab(&self) -> TermTab<T> {
+        self.term_collection[self.active_tab].clone()
     }
 
     pub fn activate_tab(&mut self, tab_id: usize) {
@@ -98,8 +100,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         let mut is_dirty = false;
 
         for _ in 0..self.pending_tab_to_add {
-            let term_context = TermTab::new(config, size_info, self.event_proxy.clone());
-            self.term_collection.push(Arc::new(FairMutex::new(term_context)));
+            let new_tab = TermTab::new(config, size_info, self.event_proxy.clone());
+            self.term_collection.push(new_tab);
             is_dirty = true;
         }
 
@@ -121,10 +123,11 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
     }
 }
 
+#[derive (Clone)]
 pub struct TermTab<T> {
     pub terminal: Arc<FairMutex<Term<T>>>,   
-    pub resize_handle: Box<dyn OnResize>,
-    pub notifier: Box<Notifier>,
+    pub resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
+    pub loop_tx: Sender<Msg>,
     // pub io_thread: JoinHandle<(EventLoop, terminal_event_loop::State)>,
 }
 
@@ -160,9 +163,9 @@ impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         // and we need to be able to resize the PTY from the main thread while the IO
         // thread owns the EventedRW object.
         #[cfg(windows)]
-        let resize_handle = Box::new(pty.resize_handle());
+        let resize_handle = pty.resize_handle();
         #[cfg(not(windows))]
-        let resize_handle = Box::new(pty.fd.as_raw_fd());
+        let resize_handle = pty.fd.as_raw_fd();
 
         // Create the pseudoterminal I/O loop
         //
@@ -175,8 +178,7 @@ impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         // The event loop channel allows write requests from the event processor
         // to be sent to the pty loop and ultimately written to the pty.
         let loop_tx = terminal_event_loop.channel();
-        let notifier = Box::new(Notifier(loop_tx.clone()));
-
+        
         // Kick off the I/O thread
         // TODO keep the list of threads for later cleanup
         //let io_thread = 
@@ -184,8 +186,8 @@ impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
 
         TermTab {
             terminal,
-            resize_handle,
-            notifier,
+            resize_handle: Arc::new(FairMutex::new(Box::new(resize_handle))),
+            loop_tx: loop_tx.clone(),
             //io_thread,
         }
     }

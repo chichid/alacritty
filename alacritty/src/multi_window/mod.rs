@@ -295,8 +295,8 @@ impl WindowContext {
 
     // Now we can resize the terminal
     let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
-    let active_tab_arc = term_tab_collection.lock().get_active_tab().clone();
-    let term_arc = active_tab_arc.lock().terminal.clone();
+    let active_tab = term_tab_collection.lock().get_active_tab().clone();
+    let term_arc = active_tab.terminal.clone();
     let mut term = term_arc.lock();
     term.resize(&display.size_info);
     term.dirty = true;
