@@ -392,8 +392,7 @@ impl Processor {
 
             let display_ctx = window_context_tracker.get_active_display_context();
             let mut display = display_ctx.display.lock();
-            let mut term_tab_collection = display_ctx.term_tab_collection.lock();
-            let active_tab = term_tab_collection.get_active_tab();
+            let active_tab = display_ctx.get_active_tab();
             let mut terminal = active_tab.terminal.lock();
             let loop_tx = active_tab.loop_tx.clone();
 
@@ -426,13 +425,10 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
             
-            if term_tab_collection.is_empty() || !window_context_tracker.has_active_display() { return; }
-
             let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
             need_redraw = match window_context_tracker.run_user_input_commands(
                 &mut multi_window_command_queue,
                 size_info,
-                &mut term_tab_collection,
                 &self.config, 
                 &event_loop, 
                 event_proxy,

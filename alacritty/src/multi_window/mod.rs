@@ -1,3 +1,4 @@
+use crate::multi_window::term_tabs::TermTab;
 use crate::multi_window::term_tabs::TermTabCollection;
 use std::slice::Iter;
 use glutin::window::WindowId;
@@ -167,13 +168,14 @@ impl WindowContextTracker {
   pub fn run_user_input_commands(&mut self, 
     display_command_queue: &mut DisplayCommandQueue,
     size_info: SizeInfo,
-    current_term_tab_collection: &mut TermTabCollection<EventProxy>,
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, Error> {
     // Drain the display command queue
     let mut is_dirty = false;
+    let current_display_ctx = self.get_active_display_context();
+    let current_term_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
 
     for command in display_command_queue.iterator() {
       let mut did_run_command = true;
@@ -306,5 +308,10 @@ impl WindowContext {
       display: Arc::new(FairMutex::new(display)),
       term_tab_collection: term_tab_collection.clone()
     })
+  }
+
+  pub fn get_active_tab(&self) -> TermTab<EventProxy> {
+    let tab_collection = self.term_tab_collection.lock();
+    tab_collection.get_active_tab().clone()
   }
 }
