@@ -24,6 +24,7 @@ pub enum DisplayCommand {
   CreateTab,
   ActivateTab(usize), // tab_id
   CloseCurrentTab,
+  CloseTab(usize),// tab_id
 }
 
 #[derive (Default)]
@@ -154,6 +155,7 @@ impl DisplayContextMap {
         DisplayCommand::CreateTab => self.command_create_new_tab(current_term_tab_collection),
         DisplayCommand::ActivateTab(tab_id) => self.command_activate_tab(*tab_id, current_term_tab_collection),
         DisplayCommand::CloseCurrentTab => self.command_close_current_tab(current_term_tab_collection),
+        DisplayCommand::CloseTab(tab_id) => self.command_close_tab(*tab_id, current_term_tab_collection),
         _ => {}
       }
     }
@@ -188,12 +190,18 @@ impl DisplayContextMap {
   }
 
   fn command_activate_tab(&mut self, tab_id: usize, tab_collection: &mut TermTabCollection<EventProxy>) {
-    println!("command_activate_tab_id");
+    info!("command_activate_tab_id tab_id: {}", tab_id);
     tab_collection.activate_tab(tab_id);
   }
 
   fn command_close_current_tab(&mut self, tab_collection: &mut TermTabCollection<EventProxy>) {
+    info!("command_close_current_tab");
     tab_collection.close_current_tab();
+  }
+
+  fn command_close_tab(&mut self, tab_id: usize, tab_collection: &mut TermTabCollection<EventProxy>) {
+    info!("command_close_tab tab_id: {}", tab_id);
+    tab_collection.close_tab(tab_id);
   }
 }
 
