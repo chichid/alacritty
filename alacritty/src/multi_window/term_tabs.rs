@@ -67,11 +67,6 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.pending_tab_activate = tab_id;
     }
 
-    pub fn close_all_tabs(&mut self) {
-        self.term_collection.clear();
-        self.pending_commit_delete_tab = true;
-    }
-
     pub fn close_current_tab(&mut self) {
         self.close_tab(self.active_tab);
         self.activate_tab(self.active_tab);
