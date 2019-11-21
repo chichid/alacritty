@@ -18,6 +18,27 @@ use crate::display::Display;
 use crate::config::Config;
 use crate::term_tabs::TermTabCollection;
 
+#[derive (Clone)]
+pub enum DisplayCommand {
+  CreateDisplay,
+  CreateTab,
+}
+
+#[derive (Default)]
+pub struct DisplayCommandQueue {
+  queue: Vec<DisplayCommand>
+}
+
+impl DisplayCommandQueue {
+  pub fn push(&mut self, command: DisplayCommand) {
+    self.queue.push(command);
+  }
+
+  pub fn iterator(&self) -> Iter<DisplayCommand> {
+    self.queue.iter()
+  }
+}
+
 pub struct DisplayContextMap {
   active_window_id: Option<WindowId>,
   map: HashMap<WindowId, DisplayContext>,
@@ -92,10 +113,6 @@ impl DisplayContextMap {
     }
   }
 
-  pub fn push_display_context(&mut self) {
-    self.pending_create_display = true;
-  }
-
   pub fn get_active_display_context(&self) -> &DisplayContext {
     let window_id = &self.active_window_id.unwrap();
     &self.map[window_id]
@@ -115,11 +132,6 @@ impl DisplayContextMap {
       self.pending_exit = None;
     }
     
-    // Handle Window Creation
-    if self.pending_create_display {
-      
-    }
-
     // Handle Window Activation
     let did_activate_screen = self.pending_window_to_activate != None;    
     if did_activate_screen {
@@ -136,7 +148,8 @@ impl DisplayContextMap {
     // Drain the display command queue
     for command in display_command_queue.iterator() {
       match command {
-        CreateDisplay => self.command_create_new_display(current_term_tab_collection, config, window_event_loop, event_proxy)?,
+        DisplayCommand::CreateDisplay => self.command_create_new_display(config, window_event_loop, event_proxy)?,
+        DisplayCommand::CreateTab => self.command_create_new_tab(current_term_tab_collection),
         _ => {}
       }
     }
@@ -145,7 +158,6 @@ impl DisplayContextMap {
   }
 
   fn command_create_new_display(&mut self, 
-    current_term_tab_collection: &mut TermTabCollection<EventProxy>,
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
@@ -161,9 +173,13 @@ impl DisplayContextMap {
     let window_id = display_context.window_id;
     self.map.insert(window_id, display_context);
     self.active_window_id = Some(window_id);
-    self.pending_create_display = false;
 
     Ok(())
+  }
+
+  fn command_create_new_tab(&mut self, current_term_tab_collection: &mut TermTabCollection<EventProxy>) {
+    println!("Create a new tab");
+    current_term_tab_collection.push_tab();
   }
 }
 
@@ -206,25 +222,4 @@ impl DisplayContext {
       term_tab_collection: term_tab_collection.clone()
     })
   }
-}
-
-
-#[derive (Default)]
-pub struct DisplayCommandQueue {
-  queue: Vec<DisplayCommand>
-}
-
-impl DisplayCommandQueue {
-  pub fn push(&mut self, command: DisplayCommand) {
-    self.queue.push(command);
-  }
-
-  pub fn iterator(&self) -> Iter<DisplayCommand> {
-    self.queue.iter()
-  }
-}
-
-#[derive (Clone)]
-pub enum DisplayCommand {
-  CreateDisplay,
 }

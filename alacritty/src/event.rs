@@ -206,12 +206,12 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        // self.display_context_map.push_display_context();
         self.display_command_queue.push(DisplayCommand::CreateDisplay);
     }
 
     fn spawn_new_tab(&mut self) {
-        self.terminal_tab_collection.push_tab();
+        println!("lalsal");
+        self.display_command_queue.push(DisplayCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
