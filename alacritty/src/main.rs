@@ -151,7 +151,6 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     //
     // Need the Rc<RefCell<_>> here since a ref is shared in the resize callback
     let mut processor = Processor::new(
-        display_context_map,
         message_buffer,
         config,
     );
@@ -159,7 +158,7 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     info!("Initialisation complete");
 
     // Start event loop and block until shutdown
-    processor.run(window_event_loop, &event_proxy);
+    processor.run(display_context_map, window_event_loop, &event_proxy);
     
     // Shutdown PTY parser event loop
     // TODO cleanup terminal collection

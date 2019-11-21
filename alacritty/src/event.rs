@@ -316,7 +316,6 @@ impl Default for Mouse {
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
 pub struct Processor {
-    display_context_map: DisplayContextMap,
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
@@ -332,12 +331,10 @@ impl Processor {
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        display_context_map: DisplayContextMap,
         message_buffer: MessageBuffer,
         config: Config,
     ) -> Processor {
         Processor {
-            display_context_map,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
@@ -349,10 +346,14 @@ impl Processor {
     }
 
     /// Run the event loop.
-    pub fn run(&mut self, mut window_event_loop: EventLoop<Event>, event_proxy: &EventProxy) {
+    pub fn run(&mut self, 
+        mut display_context_map: DisplayContextMap,
+        mut window_event_loop: EventLoop<Event>, 
+        event_proxy: &EventProxy
+    ) {
         let mut event_queue = Vec::new();
         let mut need_redraw = false;
-
+        
         window_event_loop.run_return(|event, event_loop, control_flow| {   
             if self.config.debug.print_events {
                 info!("glutin event: {:?}", event);
@@ -361,7 +362,7 @@ impl Processor {
             let mut multi_window_command_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            if self.handle_multi_window_events(&event, control_flow) {
+            if self.handle_multi_window_events(&mut display_context_map, &event, control_flow) {
                 return;
             }
 
@@ -385,9 +386,9 @@ impl Processor {
                 },
             }
             
-            if !self.display_context_map.has_active_display() { return; }
+            if !display_context_map.has_active_display() { return; }
 
-            let display_ctx = self.display_context_map.get_active_display_context();
+            let display_ctx = display_context_map.get_active_display_context();
             let display_arc = display_ctx.display.clone();
             let mut display = display_arc.lock();
             let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
@@ -426,10 +427,10 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
             
-            if term_tab_collection.is_empty() || !self.display_context_map.has_active_display() { return; }
+            if term_tab_collection.is_empty() || !display_context_map.has_active_display() { return; }
 
             let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
-            need_redraw = match self.display_context_map.run_user_input_commands(
+            need_redraw = match display_context_map.run_user_input_commands(
                 &mut multi_window_command_queue,
                 size_info,
                 &mut term_tab_collection,
@@ -669,7 +670,8 @@ impl Processor {
 
     /// Handle multi-window events
     fn handle_multi_window_events(
-        &mut self, 
+        &mut self,
+        display_context_map: &mut DisplayContextMap,
         event: &GlutinEvent<Event>,
         control_flow: &mut ControlFlow,
     ) -> bool {
@@ -708,8 +710,8 @@ impl Processor {
         }
        
         // Handle Closing all the tabs within a window (close the window)
-        if self.display_context_map.has_active_display() {
-            let display_ctx = self.display_context_map.get_active_display_context();
+        if display_context_map.has_active_display() {
+            let display_ctx = display_context_map.get_active_display_context();
             let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
             let term_tab_collection = term_tab_collection_arc.lock();
 
@@ -719,9 +721,9 @@ impl Processor {
         }
         
 
-        self.display_context_map.run_window_state_commands(&mut multi_window_command_queue);
+        display_context_map.run_window_state_commands(&mut multi_window_command_queue);
 
-        if self.display_context_map.is_empty() {
+        if display_context_map.is_empty() {
             *control_flow = ControlFlow::Exit;
             return true;
         }
