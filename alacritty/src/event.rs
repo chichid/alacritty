@@ -59,7 +59,7 @@ impl DisplayUpdate {
 pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
-    pub multi_window_command_queue: &'a mut DisplayCommandQueue,
+    pub multi_window_queue: &'a mut DisplayCommandQueue,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -202,23 +202,23 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn spawn_new_instance(&mut self) {
-        self.multi_window_command_queue.push(DisplayCommand::CreateDisplay);
+        self.multi_window_queue.push(DisplayCommand::CreateDisplay);
     }
 
     fn spawn_new_tab(&mut self) {
-        self.multi_window_command_queue.push(DisplayCommand::CreateTab);
+        self.multi_window_queue.push(DisplayCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.multi_window_command_queue.push(DisplayCommand::ActivateTab(tab_id));
+        self.multi_window_queue.push(DisplayCommand::ActivateTab(tab_id));
     }
 
     fn close_current_tab(&mut self) {
-        self.multi_window_command_queue.push(DisplayCommand::CloseCurrentTab);
+        self.multi_window_queue.push(DisplayCommand::CloseCurrentTab);
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        self.multi_window_command_queue.push(DisplayCommand::CloseTab(tab_id));
+        self.multi_window_queue.push(DisplayCommand::CloseTab(tab_id));
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
@@ -357,10 +357,10 @@ impl Processor {
             }
             
             // Multi window command queue: Manages windows and returns the currently active window
-            let mut multi_window_command_queue = DisplayCommandQueue::default();
+            let mut multi_window_queue = DisplayCommandQueue::default();
 
             // Activation & Deactivation of windows           
-            match multi_window_command_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
+            match multi_window_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
                 DisplayCommandResult::RestartLoop => return,
                 DisplayCommandResult::Exit => {
                     *control_flow = ControlFlow::Exit;
@@ -404,7 +404,7 @@ impl Processor {
             let highlighted_url = display.highlighted_url.clone();
 
             let context = ActionContext {
-                multi_window_command_queue: &mut multi_window_command_queue,
+                multi_window_queue: &mut multi_window_queue,
                 terminal: &mut terminal,
                 notifier: &mut Notifier(loop_tx),
                 mouse: &mut self.mouse,
@@ -426,9 +426,9 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
             
-            let redraw_display = need_redraw || multi_window_command_queue.has_create_display_command();
-            need_redraw = match window_context_tracker.run_user_input_commands(
-                &mut multi_window_command_queue,
+            let redraw_display = need_redraw || multi_window_queue.has_create_display_command();
+            need_redraw = match multi_window_queue.run_user_input_commands(
+                &mut window_context_tracker,
                 size_info,
                 &self.config, 
                 &event_loop, 

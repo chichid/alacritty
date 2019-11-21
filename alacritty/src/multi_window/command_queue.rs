@@ -1,9 +1,14 @@
-use std::slice::Iter;
+use glutin::event_loop::EventLoopWindowTarget;
 use glutin::event::{Event as GlutinEvent};
 
+use alacritty_terminal::term::SizeInfo;
 use alacritty_terminal::event::Event;
 
+use crate::display;
+use crate::config::Config;
+
 use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::event::EventProxy;
 
 #[derive (Clone, PartialEq)]
 pub enum DisplayCommand {
@@ -35,10 +40,6 @@ impl DisplayCommandQueue {
     }
 
     self.queue.push(command);
-  }
-
-  pub fn iterator(&self) -> Iter<DisplayCommand> {
-    self.queue.iter()
   }
 
   pub fn has_create_display_command(&self) -> bool {
@@ -98,5 +99,43 @@ impl DisplayCommandQueue {
     }
 
     DisplayCommandResult::Continue
+  }
+
+  pub fn run_user_input_commands(&mut self,
+    context_tracker: &mut WindowContextTracker, 
+    size_info: SizeInfo,
+    config: &Config, 
+    window_event_loop: &EventLoopWindowTarget<Event>, 
+    event_proxy: &EventProxy
+  ) -> Result<bool, display::Error> {
+    // Drain the displaycommand queue
+    let mut is_dirty = false;
+    let current_display_ctx = context_tracker.get_active_display_context();
+    let current_term_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
+
+    for command in self.queue.iter() {
+      let mut did_run_command = true;
+
+      match command {
+        DisplayCommand::CreateDisplay => context_tracker.command_create_new_display(config, window_event_loop, event_proxy)?,
+        DisplayCommand::CreateTab => context_tracker.command_create_new_tab(current_term_tab_collection),
+        DisplayCommand::ActivateTab(tab_id) => context_tracker.command_activate_tab(*tab_id, current_term_tab_collection),
+        DisplayCommand::CloseCurrentTab => context_tracker.command_close_current_tab(current_term_tab_collection),
+        DisplayCommand::CloseTab(tab_id) => context_tracker.command_close_tab(*tab_id, current_term_tab_collection),
+        _ => { did_run_command = false }
+      }
+
+      if did_run_command {
+        is_dirty = true;
+      }
+    }
+
+    // Commit any changes to the tab collection
+    let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
+      config, 
+      size_info,
+    );
+
+    Ok(is_dirty || is_tab_collection_dirty)
   }
 }

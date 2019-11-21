@@ -66,44 +66,6 @@ impl WindowContextTracker {
     self.map[window_id].clone()
   }
 
-  pub fn run_user_input_commands(&mut self, 
-    display_command_queue: &mut DisplayCommandQueue,
-    size_info: SizeInfo,
-    config: &Config, 
-    window_event_loop: &EventLoopWindowTarget<Event>, 
-    event_proxy: &EventProxy
-  ) -> Result<bool, Error> {
-    // Drain the displaycommand queue
-    let mut is_dirty = false;
-    let current_display_ctx = self.get_active_display_context();
-    let current_term_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
-
-    for command in display_command_queue.iterator() {
-      let mut did_run_command = true;
-
-      match command {
-        DisplayCommand::CreateDisplay => self.command_create_new_display(config, window_event_loop, event_proxy)?,
-        DisplayCommand::CreateTab => self.command_create_new_tab(current_term_tab_collection),
-        DisplayCommand::ActivateTab(tab_id) => self.command_activate_tab(*tab_id, current_term_tab_collection),
-        DisplayCommand::CloseCurrentTab => self.command_close_current_tab(current_term_tab_collection),
-        DisplayCommand::CloseTab(tab_id) => self.command_close_tab(*tab_id, current_term_tab_collection),
-        _ => { did_run_command = false }
-      }
-
-      if did_run_command {
-        is_dirty = true;
-      }
-    }
-
-    // Commit any changes to the tab collection
-    let is_tab_collection_dirty = current_term_tab_collection.commit_changes(
-      config, 
-      size_info,
-    );
-
-    Ok(is_dirty || is_tab_collection_dirty)
-  }
-
   pub(super) fn command_activate_window(&mut self, window_id: WindowId) {
     self.active_window_id = Some(window_id);
   }
