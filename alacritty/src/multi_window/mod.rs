@@ -1,8 +1,6 @@
-use glutin::event_loop::ControlFlow;
+use crate::multi_window::term_tabs::TermTabCollection;
 use std::slice::Iter;
-use std::slice::IterMut;
 use glutin::window::WindowId;
-use alacritty_terminal::event::EventListener;
 use alacritty_terminal::term::SizeInfo;
 use glutin::event_loop::EventLoopWindowTarget;
 use std::sync::Arc;
@@ -14,17 +12,16 @@ use glutin::event::{Event as GlutinEvent};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::event::Event;
 
+mod term_tabs;
+pub mod glutin_context_tracker;
+
 use crate::display::Error;
 use crate::event::{EventProxy};
 use crate::display::Display;
 use crate::config::Config;
-use crate::term_tabs::TermTabCollection;
 
 #[derive (Clone, PartialEq)]
 pub enum DisplayCommand {
-  ActivateWindow(WindowId),
-  DeactivateWindow(WindowId),
-  CloseWindow(WindowId),
   CreateDisplay,
   CreateTab,
   ActivateTab(usize), // tab_id
@@ -80,14 +77,14 @@ impl DisplayCommandQueue {
         match event {
             Focused(is_focused) => {
                 if *is_focused {
-                    context_tracker.command_activate_window(window_id);
+                    context_tracker.command_activate_window(*window_id);
                 } else {
-                    context_tracker.command_deactivate_window(window_id);
+                    context_tracker.command_deactivate_window(*window_id);
                 }
             },
             CloseRequested => {
                 is_close_requested = true;
-                context_tracker.command_close_window(window_id);
+                context_tracker.command_close_window(*window_id);
             }
             _ => {}
         }
@@ -101,13 +98,13 @@ impl DisplayCommandQueue {
     }
     
     // Handle Closing all the tabs within a window (close the window)
-    if context_tracker.has_active_display() {
+    if win_id != None && context_tracker.has_active_display() {
         let display_ctx = context_tracker.get_active_display_context();
         let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
         let term_tab_collection = term_tab_collection_arc.lock();
 
-        if win_id != None && term_tab_collection.is_empty() {
-            context_tracker.command_close_window(&win_id.unwrap());
+        if term_tab_collection.is_empty() {
+            context_tracker.command_close_window(win_id.unwrap());
         }
     }
     
@@ -204,30 +201,28 @@ impl WindowContextTracker {
     Ok(is_dirty || is_tab_collection_dirty)
   }
 
-  fn command_activate_window(&mut self, window_id: &WindowId) {
-    self.active_window_id = Some(*window_id);
+  fn command_activate_window(&mut self, window_id: WindowId) {
+    self.active_window_id = Some(window_id);
   }
 
-  fn command_deactivate_window(&mut self, window_id: &WindowId) {
-    if self.active_window_id != None && self.active_window_id.unwrap() == *window_id {
+  fn command_deactivate_window(&mut self, window_id: WindowId) {
+    if self.active_window_id != None && self.active_window_id.unwrap() == window_id {
       self.active_window_id = None;
     }
   }
   
-  fn command_close_window(&mut self, window_id: &WindowId) {
-    println!("Close window");
-
+  fn command_close_window(&mut self, window_id: WindowId) {
     let display_ctx = self.get_active_display_context();
     let display_arc = display_ctx.display.clone();
     let display = display_arc.lock();
     let window = &display.window;
     window.close();
     
-    if self.active_window_id.unwrap() == *window_id {
+    if self.active_window_id.unwrap() == window_id {
       self.active_window_id = None;
     }
 
-    self.map.remove_entry(window_id);
+    self.map.remove_entry(&window_id);
   }
 
   fn command_create_new_display(&mut self, 

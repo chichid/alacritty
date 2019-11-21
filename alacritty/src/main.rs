@@ -53,8 +53,6 @@ mod logging;
 mod url;
 mod window;
 mod multi_window;
-mod term_tabs;
-mod glutin_context_tracker;
 
 use crate::cli::Options;
 use crate::config::monitor::Monitor;

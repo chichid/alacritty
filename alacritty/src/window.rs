@@ -42,7 +42,7 @@ use alacritty_terminal::gl;
 use alacritty_terminal::term::{SizeInfo, Term};
 
 use crate::config::Config;
-use crate::glutin_context_tracker::{
+use crate::multi_window::glutin_context_tracker::{
     ContextTracker, SHARED_GL_CONTEXT_TRACKER, 
     ContextCurrentWrapper, ContextWrapper, ContextId
 };
