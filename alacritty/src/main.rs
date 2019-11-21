@@ -29,6 +29,7 @@ use std::fs;
 use std::io::{self, Write};
 #[cfg(not(windows))]
 use std::os::unix::io::AsRawFd;
+use std::sync::Arc;
 
 #[cfg(target_os = "macos")]
 use dirs;
@@ -37,11 +38,15 @@ use log::info;
 #[cfg(windows)]
 use winapi::um::wincon::{AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS};
 
+use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::event::Event;
+use alacritty_terminal::event_loop::{self, EventLoop, Msg};
 #[cfg(target_os = "macos")]
 use alacritty_terminal::locale;
 use alacritty_terminal::message_bar::MessageBuffer;
 use alacritty_terminal::panic;
+use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::term::Term;
 use alacritty_terminal::tty;
 
 mod cli;
