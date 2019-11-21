@@ -63,8 +63,6 @@ pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
     pub multi_window_command_queue: &'a mut DisplayCommandQueue,
-    pub display_context_map: &'a mut DisplayContextMap,
-    pub terminal_tab_collection: &'a mut TermTabCollection<T>,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -405,8 +403,6 @@ impl Processor {
 
             let context = ActionContext {
                 multi_window_command_queue: &mut multi_window_command_queue,
-                display_context_map: &mut self.display_context_map,
-                terminal_tab_collection: &mut term_tab_collection,
                 terminal: &mut terminal,
                 notifier: terminal_ctx.notifier.as_mut(),
                 mouse: &mut self.mouse,
