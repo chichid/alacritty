@@ -439,29 +439,30 @@ fn default_window_navigation_bindings() -> Vec<KeyBinding> {
     let use_logo = false;
 
     // On mac, using logo+T
-    #[cfg(all(target_os = "macos"))] {
-        let use_logo = true;
-        let use_alt = false;
-        let use_ctrl = false;
-    }
+    #[cfg(target_os = "macos")]
+    let use_logo = true;
+    #[cfg(target_os = "macos")]
+    let use_alt = false;
+    #[cfg(target_os = "macos")]
+    let use_ctrl = false;
 
     bindings!(
         KeyBinding;
 
         // Windows
-        Key::N, [alt: use_alt, ctrl: use_ctrl] ; Action::SpawnNewInstance;
+        Key::N,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::SpawnNewInstance;
 
         // Tabs
-        Key::T, [alt: use_alt, ctrl: use_ctrl] ; Action::SpawnNewTab;
-        Key::W, [alt: use_alt, ctrl: use_ctrl] ; Action::CloseCurrentTab;
-        Key::Key1, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(0);
-        Key::Key2, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(1);
-        Key::Key3, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(2);
-        Key::Key4, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(3);
-        Key::Key5, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(4);
-        Key::Key7, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(5);
-        Key::Key8, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(6);
-        Key::Key9, [alt: use_alt, ctrl: use_ctrl] ; Action::ActivateTab(7);
+        Key::T,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::SpawnNewTab;
+        Key::W,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CloseCurrentTab;
+        Key::Key1,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(0);
+        Key::Key2,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(1);
+        Key::Key3,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(2);
+        Key::Key4,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(3);
+        Key::Key5,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(4);
+        Key::Key7,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(5);
+        Key::Key8,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(6);
+        Key::Key9,  [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::ActivateTab(7);
     )
 }
 
