@@ -218,7 +218,7 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
     }
 
     fn close_current_tab(&mut self) {
-        self.terminal_tab_collection.close_current_tab();
+        self.display_command_queue.push(DisplayCommand::CloseCurrentTab);
     }
 
     fn close_tab(&mut self, tab_id: usize) {
