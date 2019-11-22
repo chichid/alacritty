@@ -1,4 +1,6 @@
 //! Process window events
+use alacritty_terminal::event_loop::Notifier;
+use crate::multi_window::window_context_tracker::WindowContext;
 use std::borrow::Cow;
 use std::cmp::max;
 use std::env;
@@ -9,7 +11,6 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 
-use glutin::window::WindowId;
 use glutin::dpi::PhysicalSize;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
@@ -22,25 +23,25 @@ use font::Size;
 use alacritty_terminal::clipboard::ClipboardType;
 use alacritty_terminal::config::Font;
 use alacritty_terminal::config::LOG_TARGET_CONFIG;
+use alacritty_terminal::event::OnResize;
 use alacritty_terminal::event::{Event, EventListener, Notify};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::message_bar::{Message, MessageBuffer};
 use alacritty_terminal::selection::Selection;
+use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Cell;
 use alacritty_terminal::term::{SizeInfo, Term};
 #[cfg(not(windows))]
 use alacritty_terminal::tty;
 use alacritty_terminal::util::{limit, start_daemon};
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::event_loop::Notifier;
 
 use crate::config;
 use crate::config::Config;
-use crate::input::{self, FONT_SIZE_STEP};
-use crate::window::Window; 
-use crate::multi_window::window_context_tracker::WindowContextTracker;
-use crate::multi_window::command_queue::{ MultiWindowCommandQueue, MultiWindowCommand, MultiWindowCommandResult};
+use crate::display::Display;
+use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
+use crate::window::Window;
+use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand, MultiWindowCommandResult};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -56,9 +57,9 @@ impl DisplayUpdate {
 }
 
 pub struct ActionContext<'a, N, T> {
+    pub multi_window_queue: &'a mut MultiWindowCommandQueue,
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
-    pub multi_window_queue: &'a mut MultiWindowCommandQueue,
     pub size_info: &'a mut SizeInfo,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -71,7 +72,7 @@ pub struct ActionContext<'a, N, T> {
     font_size: &'a mut Size,
 }
 
-impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::ActionContext<T> for ActionContext<'a, N, T> {
+impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionContext<'a, N, T> {
     fn write_to_pty<B: Into<Cow<'static, [u8]>>>(&mut self, val: B) {
         self.notifier.notify(val);
     }
@@ -249,14 +250,6 @@ impl<'a, N: Notify + 'a, T: 'static + EventListener + Clone + Send> input::Actio
         // TODO implement moving a tab from an index to another
     }
 
-    // fn activate_next_tab(&mut selt) {
-        // TODO implement activating the next tab
-    // }
-
-    // fn activate_previous_tab(&mut selt) {
-        // TODO implement activating the previous tab
-    // }
-
     fn change_font_size(&mut self, delta: f32) {
         *self.font_size = max(*self.font_size + delta, Size::new(FONT_SIZE_STEP));
         let font = self.config.font.clone().with_size(*self.font_size);
@@ -341,7 +334,6 @@ pub struct Processor {
     received_count: usize,
     suppress_chars: bool,
     modifiers: ModifiersState,
-    config: Config,
     message_buffer: MessageBuffer,
     font_size: Size,
 }
@@ -353,49 +345,48 @@ impl Processor {
     /// pty.
     pub fn new(
         message_buffer: MessageBuffer,
-        config: Config,
+        font_size: Size,
     ) -> Processor {
         Processor {
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
             modifiers: Default::default(),
-            font_size: config.font.size,
-            config,
+            font_size,
             message_buffer,
         }
     }
 
     /// Run the event loop.
-    pub fn run(&mut self, 
-        mut window_context_tracker: WindowContextTracker,
-        mut window_event_loop: EventLoop<Event>, 
-        event_proxy: &EventProxy
+    pub fn run(
+        &mut self,
+        event_queue: &mut Vec<GlutinEvent<Event>>,
+        multi_window_queue: &mut MultiWindowCommandQueue,
+        window_ctx: &mut WindowContext,
+        event: GlutinEvent<Event>,
+        control_flow: &mut ControlFlow,
+        config: &mut Config,
     ) {
-        let mut event_queue = Vec::new();
-        let mut need_redraw = false;
+        let mut display = window_ctx.display.lock();
+        let mut size_info = display.size_info;
+        let urls = display.urls.clone();
+        let highlighted_url = display.highlighted_url.clone();
+        let window = &mut display.window;
+        let active_tab = window_ctx.get_active_tab();
+        let mut notifier = Notifier(active_tab.loop_tx.clone());
+        let mut resize_handle = active_tab.resize_handle.lock();
         
-        window_event_loop.run_return(|event, event_loop, control_flow| {   
-            if self.config.debug.print_events {
+        {
+            if config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
-            
-            // Multi window command queue: Manages windows and returns the currently active window
-            let mut multi_window_queue = MultiWindowCommandQueue::default();
 
-            // Activation & Deactivation of windows           
-            match multi_window_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
-                MultiWindowCommandResult::RestartLoop => return,
-                MultiWindowCommandResult::Exit => {
+            match &event {
+                // Check for shutdown
+                GlutinEvent::UserEvent(Event::Exit) => {
                     *control_flow = ControlFlow::Exit;
                     return;
                 },
-                _ => {}
-            }
-
-            if !window_context_tracker.has_active_display() { return; }
-            
-            match &event {
                 // Process events
                 GlutinEvent::EventsCleared => {
                     *control_flow = ControlFlow::Wait;
@@ -413,23 +404,15 @@ impl Processor {
                     return;
                 },
             }
-            
-            let display_ctx = window_context_tracker.get_active_display_context();
-            let mut display = display_ctx.display.lock();
-            let active_tab = display_ctx.get_active_tab();
+
             let mut terminal = active_tab.terminal.lock();
-            let loop_tx = active_tab.loop_tx.clone();
 
             let mut display_update_pending = DisplayUpdate::default();
-            
-            let mut size_info = display.size_info;
-            let urls = display.urls.clone();
-            let highlighted_url = display.highlighted_url.clone();
 
             let context = ActionContext {
-                multi_window_queue: &mut multi_window_queue,
+                multi_window_queue,
                 terminal: &mut terminal,
-                notifier: &mut Notifier(loop_tx),
+                notifier: &mut notifier,
                 mouse: &mut self.mouse,
                 size_info: &mut size_info,
                 received_count: &mut self.received_count,
@@ -437,41 +420,29 @@ impl Processor {
                 modifiers: &mut self.modifiers,
                 message_buffer: &mut self.message_buffer,
                 display_update_pending: &mut display_update_pending,
-                window: &mut display.window,
+                window,
                 font_size: &mut self.font_size,
-                config: &mut self.config,
+                config,
             };
             let mut processor =
-                 input::Processor::new(context, &urls, &highlighted_url);
+                input::Processor::new(context, &urls, &highlighted_url);
 
             for event in event_queue.drain(..) {
                 Processor::handle_event(event, &mut processor);
             }
-            
-            let redraw_display = need_redraw || multi_window_queue.has_create_display_command();
-            need_redraw = match multi_window_queue.run_user_input_commands(
-                &mut window_context_tracker,
-                size_info,
-                &self.config, 
-                &event_loop, 
-                event_proxy,
-            ) {
-                Ok(is_dirty) => is_dirty,
-                Err(_error) => return,
-            };
 
-            // Process resize events
+            // Process DisplayUpdate events
             if !display_update_pending.is_empty() {
                 display.handle_update(
                     &mut terminal,
-                    active_tab.resize_handle.lock().as_mut(),
+                    resize_handle.as_mut(),
                     &self.message_buffer,
-                    &self.config,
+                    config,
                     display_update_pending,
                 );
             }
-
-            if terminal.dirty || redraw_display {
+            
+            if terminal.dirty {
                 terminal.dirty = false;
 
                 // Request immediate re-draw if visual bell animation is not finished yet
@@ -483,26 +454,25 @@ impl Processor {
                 display.draw(
                     terminal,
                     &self.message_buffer,
-                    &self.config,
+                    config,
                     &self.mouse,
                     self.modifiers,
                 );
             }
-        });
+        }
 
         // Write ref tests to disk
-        // TODO - Loop through all the terminals in the terminal collection and write refs to disk
-        // self.write_ref_test_results(&terminal.lock());
+        //self.write_ref_test_results(&terminal.lock());
     }
 
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T: 'static + Clone + Send>(
+    fn handle_event<T, N>(
         event: GlutinEvent<Event>,
-        processor: &mut input::Processor<T, ActionContext<Notifier, T>>,
+        processor: &mut input::Processor<T, ActionContext<N, T>>,
     ) where
-        T: EventListener,
+        T: EventListener, N: Notify
     {
         match event {
             GlutinEvent::UserEvent(event) => match event {
@@ -544,9 +514,7 @@ impl Processor {
             GlutinEvent::WindowEvent { event, window_id, .. } => {
                 use glutin::event::WindowEvent::*;
                 match event {
-                    CloseRequested => {
-                        // This is handled as part of the main loop now as part of the window activation/deactivation
-                    },
+                    CloseRequested => processor.ctx.terminal.exit(),
                     Resized(lsize) => {
                         let psize = lsize.to_physical(processor.ctx.size_info.dpr);
                         processor.ctx.display_update_pending.dimensions = Some(psize);
@@ -596,7 +564,6 @@ impl Processor {
                         }
                     },
                     DroppedFile(path) => {
-                        use crate::input::ActionContext;
                         let path: String = path.to_string_lossy().into();
                         processor.ctx.write_to_pty(path.into_bytes());
                     },
@@ -685,7 +652,6 @@ impl Processor {
         }
     }
 
-    // TODO put this function back
     // Write the ref test results to the disk
     // pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
     //     if !self.config.debug.ref_test {

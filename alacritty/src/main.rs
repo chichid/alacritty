@@ -24,6 +24,7 @@
 
 #[cfg(target_os = "macos")]
 use std::env;
+use alacritty_terminal::event_loop::Notifier;
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
@@ -34,6 +35,7 @@ use std::sync::Arc;
 #[cfg(target_os = "macos")]
 use dirs;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
+use glutin::event_loop::{ControlFlow};
 use log::info;
 #[cfg(windows)]
 use winapi::um::wincon::{AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS};
@@ -64,6 +66,7 @@ use crate::config::monitor::Monitor;
 use crate::config::Config;
 use crate::event::{EventProxy, Processor};
 use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand, MultiWindowCommandResult};
 
 fn main() {
     panic::attach_handler();
@@ -122,7 +125,7 @@ fn main() {
 ///
 /// Creates a window, the terminal state, pty, I/O event loop, input processor,
 /// config change monitor, and runs the main display loop.
-fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), Box<dyn Error>> {
+fn run(mut window_event_loop: GlutinEventLoop<Event>, mut config: Config) -> Result<(), Box<dyn Error>> {
     info!("Welcome to Alacritty");
     if let Some(config_path) = &config.config_path {
         info!("Configuration loaded from \"{}\"", config_path.display());
@@ -150,19 +153,63 @@ fn run(window_event_loop: GlutinEventLoop<Event>, config: Config) -> Result<(), 
     // Setup storage for message UI
     let message_buffer = MessageBuffer::new();
 
+    info!("Initialisation complete");
+
     // Event processor
     //
     // Need the Rc<RefCell<_>> here since a ref is shared in the resize callback
     let mut processor = Processor::new(
         message_buffer,
-        config,
+        config.font.size,
     );
-
-    info!("Initialisation complete");
-
-    // Start event loop and block until shutdown
-    processor.run(window_context_tracker, window_event_loop, &event_proxy);
     
+    use glutin::platform::desktop::EventLoopExtDesktop;
+    let mut event_queue = Vec::new();
+
+    window_event_loop.run_return(|event, _event_loop, mut control_flow| {    
+        let mut multi_window_queue = MultiWindowCommandQueue::default();
+
+        // Activation & Deactivation of windows           
+        match multi_window_queue.handle_multi_window_events(&mut window_context_tracker, &event) {
+            MultiWindowCommandResult::RestartLoop => return,
+            MultiWindowCommandResult::Exit => {
+                *control_flow = ControlFlow::Exit;
+                return;
+            },
+            _ => {}
+        }
+
+        if !window_context_tracker.has_active_display() { return; }
+
+        // Process events for the active display, user input etc.
+        let mut window_ctx = window_context_tracker.get_active_display_context();
+
+        processor.run(
+            &mut event_queue,
+            &mut multi_window_queue, 
+            &mut window_ctx,
+            event,
+            &mut control_flow,
+            &mut config,
+        );
+
+        // Process windows specific events
+        let size_info = window_ctx.display.lock().size_info;
+        multi_window_queue.run_user_input_commands(
+            &mut window_context_tracker,
+            &mut window_ctx,
+            &config,
+            _event_loop,
+            &event_proxy,
+        );
+
+        // Draw the inactive windows
+    });
+
+    // TODO Cleanup
+    // Write ref tests to disk
+    // processor.write_ref_test_results(&terminal.lock());
+        
     // Shutdown PTY parser event loop
     // TODO cleanup terminal collection
     // loop_tx.send(Msg::Shutdown).expect("Error sending shutdown to pty event loop");

@@ -410,6 +410,10 @@ impl Window {
     pub fn close(&self) {
         unsafe { SHARED_GL_CONTEXT_TRACKER.remove(self.context_id); }
     }
+
+    pub fn request_redraw(&self) {
+        self.window().request_redraw();
+    }
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]

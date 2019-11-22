@@ -1,3 +1,4 @@
+use crate::multi_window::window_context_tracker::WindowContext;
 use glutin::event_loop::EventLoopWindowTarget;
 use glutin::event::{Event as GlutinEvent};
 
@@ -102,17 +103,19 @@ impl MultiWindowCommandQueue {
   }
 
   pub fn run_user_input_commands(&mut self,
-    context_tracker: &mut WindowContextTracker, 
-    size_info: SizeInfo,
+    context_tracker: &mut WindowContextTracker,
+    window_ctx: &mut WindowContext, 
     config: &Config, 
     window_event_loop: &EventLoopWindowTarget<Event>, 
     event_proxy: &EventProxy
   ) -> Result<bool, display::Error> {
     // Drain the displaycommand queue
     let mut is_dirty = false;
-    let current_display_ctx = context_tracker.get_active_display_context();
-    let current_tab_collection = &mut current_display_ctx.term_tab_collection.lock();
-
+    let display = window_ctx.display.lock();
+    let size_info = display.size_info;
+    let window = &display.window;
+    let current_tab_collection = &mut window_ctx.term_tab_collection.lock();
+    
     for command in self.queue.iter() {
       let mut did_run_command = true;
 
@@ -128,6 +131,8 @@ impl MultiWindowCommandQueue {
       if did_run_command {
         is_dirty = true;
       }
+
+      window.request_redraw();
     }
 
     // Commit any changes to the tab collection
