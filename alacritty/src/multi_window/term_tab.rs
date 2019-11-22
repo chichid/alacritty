@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use glutin::window::WindowId;
-use mio_extras::channel::Sender;
+use mio_extras::channel::{self, Sender};
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::clipboard::Clipboard;
@@ -31,9 +31,10 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
     pub(super) fn new(
         window_id: Option<WindowId>,
         tab_id: usize, 
+        dispatcher: Sender<MultiWindowEvent>,
         config: &Config, 
         display_size_info: SizeInfo, 
-        event_proxy: T
+        event_proxy: T,
     ) -> TermTab<T> {
         // Create a handle for the current tab
         let tab_handle = Arc::new(FairMutex::new(TermTabHandle {
@@ -45,6 +46,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         let event_proxy_wrapper = EventProxyWrapper {
             wrapped_event_proxy: event_proxy.clone(),
             tab_handle: tab_handle.clone(),
+            dispatcher: dispatcher.clone(),
         };
 
         // Create new native clipboard
@@ -125,12 +127,26 @@ pub struct TermTabHandle {
 pub struct EventProxyWrapper<T> {
     wrapped_event_proxy: T,
     tab_handle: Arc<FairMutex<TermTabHandle>>,
+    dispatcher: Sender<MultiWindowEvent>,
+}
+
+#[derive (Clone, Debug)]
+pub struct MultiWindowEvent {
+    pub wrapped_event: Event,
+    pub window_id: Option<WindowId>,
+    pub tab_id: usize,
 }
 
 impl<T: EventListener> EventListener for EventProxyWrapper<T> {
     fn send_event(&self, event: Event) {
         let handle = self.tab_handle.lock();
-        println!("Event from {:?} {}", handle.window_id, handle.tab_id);
+
+        self.dispatcher.send(MultiWindowEvent {
+            window_id: handle.window_id,
+            tab_id: handle.tab_id,
+            wrapped_event: event.clone()
+        });
+
         self.wrapped_event_proxy.send_event(event);
     }
 }

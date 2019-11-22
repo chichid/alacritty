@@ -1,3 +1,6 @@
+use mio_extras::channel::Receiver;
+use mio_extras::channel::Sender;
+use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::config::Config;
 use crate::event::EventProxy;
 use glutin::event_loop::ControlFlow;
@@ -15,6 +18,7 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 
 use glutin::event_loop::EventLoop as GlutinEventLoop;
 use glutin::platform::desktop::EventLoopExtDesktop;
+use mio_extras::channel::{self};
 
 #[derive(Default)]
 pub struct MultiWindowProcessor {}
@@ -26,6 +30,8 @@ impl MultiWindowProcessor {
         mut window_event_loop: GlutinEventLoop<Event>,
         mut context_tracker: WindowContextTracker,
         event_proxy: EventProxy,
+        dispatcher: Sender<MultiWindowEvent>,
+        receiver: Receiver<MultiWindowEvent>,
     ) {
         // Setup shared storage for message UI
         let message_buffer = MessageBuffer::new();
@@ -56,6 +62,24 @@ impl MultiWindowProcessor {
                 return;
             }
 
+            // Process backward events from the PTY
+            match receiver.try_recv() {
+                Ok(result) => {
+                    let window_id = result.window_id;
+                    if window_id != None { 
+                        let window_id = window_id.unwrap();
+                        let ctx = context_tracker.get_context(window_id);
+                        let active_tab = ctx.get_active_tab();
+
+                        if active_tab.tab_id == result.tab_id {
+                            let mut terminal = active_tab.terminal.lock();
+                            terminal.dirty = true;
+                        }
+                    }
+                },
+                Err(err) => {}
+            }
+            
             if !context_tracker.has_active_window() {
                 return;
             }
@@ -79,6 +103,7 @@ impl MultiWindowProcessor {
                 &config,
                 _event_loop,
                 &event_proxy,
+                dispatcher.clone(),
             ) {
                 Ok(_) => {}
                 Err(_err) => {}

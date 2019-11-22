@@ -1,3 +1,5 @@
+use crate::multi_window::term_tab::MultiWindowEvent;
+use mio_extras::channel::Sender;
 use std::collections::hash_map::Values;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
 use log::info;
@@ -33,14 +35,14 @@ impl WindowContextTracker {
         config: &Config,
         window_event_loop: &GlutinEventLoop<Event>,
         event_proxy: &EventProxy,
+        dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<(), Error> {
         // Init the estimated dpr
         self.estimated_dpr =
             window_event_loop.available_monitors().next().map(|m| m.hidpi_factor()).unwrap_or(1.);
 
         // Create the initial display
-        let display_context =
-            WindowContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
+        let display_context = WindowContext::new(self.estimated_dpr, config, window_event_loop, event_proxy, dispatcher)?;
         let window_id = display_context.window_id;
         self.map.insert(window_id, display_context);
         self.active_window_id = Some(window_id);
@@ -63,6 +65,10 @@ impl WindowContextTracker {
     pub fn get_active_window_context(&self) -> WindowContext {
         let window_id = &self.active_window_id.unwrap();
         self.map[window_id].clone()
+    }
+
+    pub fn get_context(&self, window_id: WindowId) -> WindowContext {
+        self.map[&window_id].clone()
     }
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
@@ -94,10 +100,16 @@ impl WindowContextTracker {
         config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
+        dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<(), Error> {
         info!("command_create_new_display");
-        let display_context =
-            WindowContext::new(self.estimated_dpr, config, window_event_loop, event_proxy)?;
+        let display_context = WindowContext::new(
+            self.estimated_dpr, 
+            config,
+            window_event_loop,
+            event_proxy,
+            dispatcher
+        )?;
 
         let window_id = display_context.window_id;
         self.map.insert(window_id, display_context);
@@ -120,12 +132,13 @@ impl WindowContext {
         config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
+        dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<WindowContext, Error> {
         // Create a terminal tab collection
         //
         // The tab collection is a collection of TerminalTab that holds the state of all tabs
         let mut term_tab_collection = TermTabCollection::new(event_proxy.clone());
-        term_tab_collection.initialize(&config);
+        term_tab_collection.initialize(&config, dispatcher);
 
         // Create a display
         //

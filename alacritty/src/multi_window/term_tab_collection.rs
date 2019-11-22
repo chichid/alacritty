@@ -1,3 +1,5 @@
+use mio_extras::channel::Sender;
+use crate::multi_window::term_tab::MultiWindowEvent;
 use glutin::window::WindowId;
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::term::SizeInfo;
@@ -33,7 +35,7 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         }
     }
 
-    pub(super) fn initialize(&mut self, config: &Config) {
+    pub(super) fn initialize(&mut self, config: &Config, dispatcher: Sender<MultiWindowEvent>) {
         // This decouples the terminal initialization from the display, to allow faster startup time
         // For the first terminal, the resizing in the event loop kicks in and will eventually
         // resize the current terminal and value here will do
@@ -52,7 +54,7 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         // The window_id will be pushed to the terminal when the display is created later
         self.push_tab();
         self.activate_tab(0);
-        self.commit_changes(None, config, dummy_display_size_info);
+        self.commit_changes(None, config, dummy_display_size_info, dispatcher);
     }
 
     pub(super) fn is_empty(&self) -> bool {
@@ -89,13 +91,19 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         new_tab_id
     }
 
-    pub(super) fn commit_changes(&mut self, window_id: Option<WindowId>, config: &Config, size_info: SizeInfo) -> bool {
+    pub(super) fn commit_changes(
+        &mut self, 
+        window_id: Option<WindowId>,
+        config: &Config,
+        size_info: SizeInfo,
+        dispatcher: Sender<MultiWindowEvent>,
+    ) -> bool {
         // Add new terminals
         let mut is_dirty = false;
 
         for _ in 0..self.pending_tab_to_add {
             let tab_id = self.term_collection.len();
-            let new_tab = TermTab::new(window_id, tab_id, config, size_info, self.event_proxy.clone());
+            let new_tab = TermTab::new(window_id, tab_id, dispatcher.clone(), config, size_info, self.event_proxy.clone());
             self.term_collection.push(new_tab);
             is_dirty = true;
         }

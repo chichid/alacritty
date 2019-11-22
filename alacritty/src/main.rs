@@ -30,6 +30,7 @@ use std::io::{self, Write};
 #[cfg(not(windows))]
 use std::os::unix::io::AsRawFd;
 
+use mio_extras::channel::{self};
 #[cfg(target_os = "macos")]
 use dirs;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
@@ -128,11 +129,14 @@ fn run(mut window_event_loop: GlutinEventLoop<Event>, mut config: Config) -> Res
 
     let event_proxy = EventProxy::new(window_event_loop.create_proxy());
 
+    // Channel for multi-window communication  
+    let (tx, rx) = channel::channel(); 
+
     // Create the app window context tracker
     //
     // The display context map manages the windows and tabs for the entire application
     let mut window_context_tracker = WindowContextTracker::new();
-    window_context_tracker.initialize(&config, &window_event_loop, &event_proxy)?;
+    window_context_tracker.initialize(&config, &window_event_loop, &event_proxy, tx.clone())?;
 
     // Create a config monitor when config was loaded from path
     //
@@ -148,7 +152,7 @@ fn run(mut window_event_loop: GlutinEventLoop<Event>, mut config: Config) -> Res
     //
     // Handles events for all the windows, it owns the context tracker from here on
     let processor = MultiWindowProcessor::default();
-    processor.run(config, window_event_loop, window_context_tracker, event_proxy);
+    processor.run(config, window_event_loop, window_context_tracker, event_proxy, tx.clone(), rx);
 
     // TODO Cleanup
     // Write ref tests to disk

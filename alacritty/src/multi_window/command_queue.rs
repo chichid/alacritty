@@ -1,3 +1,5 @@
+use mio_extras::channel::Sender;
+use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::multi_window::window_context_tracker::WindowContext;
 use alacritty_terminal::event::Event;
 use glutin::event_loop::EventLoopWindowTarget;
@@ -51,6 +53,7 @@ impl MultiWindowCommandQueue {
         config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
+        dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<bool, display::Error> {
         // Drain the displaycommand queue
         let mut is_dirty = false;
@@ -62,7 +65,7 @@ impl MultiWindowCommandQueue {
         for command in self.queue.iter() {
             if match command {
                 MultiWindowCommand::CreateDisplay => {
-                    context_tracker.create_display(config, window_event_loop, event_proxy)?;
+                    context_tracker.create_display(config, window_event_loop, event_proxy, dispatcher.clone())?;
                     true
                 }
                 MultiWindowCommand::CreateTab => {
@@ -92,7 +95,8 @@ impl MultiWindowCommandQueue {
         let is_tab_collection_dirty = current_tab_collection.commit_changes(
             Some(window_ctx.window_id),
             config, 
-            size_info
+            size_info,
+            dispatcher,
         );
 
         Ok(is_dirty || is_tab_collection_dirty)
