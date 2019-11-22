@@ -91,7 +91,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         let mut is_dirty = false;
 
         for _ in 0..self.pending_tab_to_add {
-            let new_tab = TermTab::new(config, size_info, self.event_proxy.clone());
+            let tab_id = self.term_collection.len();
+            let new_tab = TermTab::new(tab_id, config, size_info, self.event_proxy.clone());
             self.term_collection.push(new_tab);
             is_dirty = true;
         }

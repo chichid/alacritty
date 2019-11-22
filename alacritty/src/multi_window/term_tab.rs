@@ -15,6 +15,7 @@ use crate::config::Config;
 
 #[derive(Clone)]
 pub struct TermTab<T> {
+    pub tab_id: usize,
     pub terminal: Arc<FairMutex<Term<T>>>,
     pub resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
     pub loop_tx: Sender<Msg>,
@@ -22,7 +23,7 @@ pub struct TermTab<T> {
 }
 
 impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
-    pub(super) fn new(config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
+    pub(super) fn new(tab_id: usize, config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
         // Create new native clipboard
         #[cfg(not(any(target_os = "macos", windows)))]
         let clipboard = Clipboard::new(display.window.wayland_display());
@@ -76,6 +77,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         terminal_event_loop.spawn();
 
         TermTab {
+            tab_id,
             terminal,
             resize_handle: Arc::new(FairMutex::new(Box::new(resize_handle))),
             loop_tx: loop_tx.clone(),
