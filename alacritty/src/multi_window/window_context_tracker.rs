@@ -1,3 +1,4 @@
+use std::collections::hash_map::Values;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
 use log::info;
 use std::collections::HashMap;
@@ -51,11 +52,15 @@ impl WindowContextTracker {
         self.map.is_empty()
     }
 
-    pub fn has_active_display(&mut self) -> bool {
+    pub fn has_active_window(&mut self) -> bool {
         self.active_window_id != None
     }
 
-    pub fn get_active_display_context(&self) -> WindowContext {
+    pub fn get_all_window_contexts(&self) -> Values<WindowId, WindowContext> {
+        self.map.values().clone()
+    }
+
+    pub fn get_active_window_context(&self) -> WindowContext {
         let window_id = &self.active_window_id.unwrap();
         self.map[window_id].clone()
     }
@@ -71,7 +76,7 @@ impl WindowContextTracker {
     }
 
     pub(super) fn close_window(&mut self, window_id: WindowId) {
-        let display_ctx = self.get_active_display_context();
+        let display_ctx = self.get_active_window_context();
         let display_arc = display_ctx.display.clone();
         let display = display_arc.lock();
         let window = &display.window;

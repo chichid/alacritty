@@ -24,7 +24,7 @@ impl MultiWindowProcessor {
         &self,
         mut config: Config,
         mut window_event_loop: GlutinEventLoop<Event>,
-        mut window_context_tracker: WindowContextTracker,
+        mut context_tracker: WindowContextTracker,
         event_proxy: EventProxy,
     ) {
         // Setup shared storage for message UI
@@ -48,7 +48,7 @@ impl MultiWindowProcessor {
             let should_return = self.handle_events(
                 &event,
                 &mut control_flow,
-                &mut window_context_tracker,
+                &mut context_tracker,
                 &mut multi_window_queue,
             );
 
@@ -56,26 +56,26 @@ impl MultiWindowProcessor {
                 return;
             }
 
-            if !window_context_tracker.has_active_display() {
+            if !context_tracker.has_active_window() {
                 return;
             }
 
             // Process events for the active display, user input etc.
-            let mut window_ctx = window_context_tracker.get_active_display_context();
+            let mut active_ctx = context_tracker.get_active_window_context();
 
             processor.run(
                 &mut event_queue,
                 &mut multi_window_queue,
-                &mut window_ctx,
+                &mut active_ctx,
                 event,
                 &mut control_flow,
                 &mut config,
             );
 
-            // Process windows specific events
+            // Process input events and drawing of the main screen
             match multi_window_queue.run_user_input_commands(
-                &mut window_context_tracker,
-                &mut window_ctx,
+                &mut context_tracker,
+                &mut active_ctx,
                 &config,
                 _event_loop,
                 &event_proxy,
@@ -84,7 +84,19 @@ impl MultiWindowProcessor {
                 Err(_err) => {}
             };
 
-            // Draw the inactive windows
+            // Draw the inactive visible windows
+            for inactive_ctx in context_tracker.get_all_window_contexts() {
+                // TODO check if the display is not minimized
+                if inactive_ctx.window_id != active_ctx.window_id {
+                    let display = inactive_ctx.display.lock();
+                    let tab = inactive_ctx.get_active_tab();
+                    let terminal = tab.terminal.lock();
+
+                    if terminal.dirty {
+                        println!("Dirty inactive Terminal found");
+                    }
+                }
+            }
         });
     }
 
@@ -128,8 +140,8 @@ impl MultiWindowProcessor {
         }
 
         // Handle Closing all the tabs within a window (close the window)
-        if win_id != None && context_tracker.has_active_display() {
-            let display_ctx = context_tracker.get_active_display_context();
+        if win_id != None && context_tracker.has_active_window() {
+            let display_ctx = context_tracker.get_active_window_context();
             let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
             let term_tab_collection = term_tab_collection_arc.lock();
 
