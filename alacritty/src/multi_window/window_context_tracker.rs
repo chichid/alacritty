@@ -131,11 +131,14 @@ impl WindowContext {
         //
         // The display manages a window and can draw the terminal.
         let display = Display::new(config, estimated_dpr, window_event_loop)?;
+        let window_id = display.window.window_id();
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
         // Now we can resize the terminal
         let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
-        let active_tab = term_tab_collection.lock().get_active_tab().clone();
+        let mut active_tab = term_tab_collection.lock().get_active_tab().clone();
+        active_tab.set_window_id(window_id);
+
         let term_arc = active_tab.terminal.clone();
         let mut term = term_arc.lock();
         term.resize(&display.size_info);

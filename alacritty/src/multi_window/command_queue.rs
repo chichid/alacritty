@@ -60,36 +60,40 @@ impl MultiWindowCommandQueue {
         let current_tab_collection = &mut window_ctx.term_tab_collection.lock();
 
         for command in self.queue.iter() {
-            let mut did_run_command = true;
-
-            match command {
+            if match command {
                 MultiWindowCommand::CreateDisplay => {
                     context_tracker.create_display(config, window_event_loop, event_proxy)?;
+                    true
                 }
                 MultiWindowCommand::CreateTab => {
                     current_tab_collection.push_tab();
+                    true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {
                     current_tab_collection.activate_tab(*tab_id);
+                    true
                 }
                 MultiWindowCommand::CloseCurrentTab => {
                     current_tab_collection.close_current_tab();
+                    true
                 }
                 MultiWindowCommand::CloseTab(tab_id) => {
                     current_tab_collection.close_tab(*tab_id);
+                    true
                 }
-                _ => did_run_command = false,
-            }
-
-            if did_run_command {
+                _ => false
+            } {
+                window.request_redraw();
                 is_dirty = true;
-            }
-
-            window.request_redraw();
+            }            
         }
 
         // Commit any changes to the tab collection
-        let is_tab_collection_dirty = current_tab_collection.commit_changes(config, size_info);
+        let is_tab_collection_dirty = current_tab_collection.commit_changes(
+            Some(window_ctx.window_id),
+            config, 
+            size_info
+        );
 
         Ok(is_dirty || is_tab_collection_dirty)
     }

@@ -1,6 +1,9 @@
-use mio_extras::channel::Sender;
 use std::sync::Arc;
 
+use glutin::window::WindowId;
+use mio_extras::channel::Sender;
+
+use alacritty_terminal::event::Event;
 use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::event::OnResize;
@@ -16,14 +19,34 @@ use crate::config::Config;
 #[derive(Clone)]
 pub struct TermTab<T> {
     pub tab_id: usize,
-    pub terminal: Arc<FairMutex<Term<T>>>,
+    pub terminal: Arc<FairMutex<Term<EventProxyWrapper<T>>>>,
     pub resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
     pub loop_tx: Sender<Msg>,
+    event_proxy_wrapper: EventProxyWrapper<T>,
+    tab_handle: Arc<FairMutex<TermTabHandle>>,
     // pub io_thread: JoinHandle<(EventLoop, terminal_event_loop::State)>,
 }
 
 impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
-    pub(super) fn new(tab_id: usize, config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
+    pub(super) fn new(
+        window_id: Option<WindowId>,
+        tab_id: usize, 
+        config: &Config, 
+        display_size_info: SizeInfo, 
+        event_proxy: T
+    ) -> TermTab<T> {
+        // Create a handle for the current tab
+        let tab_handle = Arc::new(FairMutex::new(TermTabHandle {
+            tab_id,
+            window_id,
+        }));
+
+        // Create an event proxy wrapper to be able to link events coming back from the terminal to their tabs
+        let event_proxy_wrapper = EventProxyWrapper {
+            wrapped_event_proxy: event_proxy.clone(),
+            tab_handle: tab_handle.clone(),
+        };
+
         // Create new native clipboard
         #[cfg(not(any(target_os = "macos", windows)))]
         let clipboard = Clipboard::new(display.window.wayland_display());
@@ -35,7 +58,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         // This object contains all of the state about what's being displayed. It's
         // wrapped in a clonable mutex since both the I/O loop and display need to
         // access it.
-        let terminal = Term::new(config, &display_size_info, clipboard, event_proxy.clone());
+        let terminal = Term::new(config, &display_size_info, clipboard, event_proxy_wrapper.clone());
         let terminal = Arc::new(FairMutex::new(terminal));
 
         // Create the pty
@@ -65,7 +88,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         // synchronized since the I/O loop updates the state, and the display
         // consumes it periodically.
         let terminal_event_loop =
-            EventLoop::new(terminal.clone(), event_proxy.clone(), pty, config);
+            EventLoop::new(terminal.clone(), event_proxy_wrapper.clone(), pty, config);
 
         // The event loop channel allows write requests from the event processor
         // to be sent to the pty loop and ultimately written to the pty.
@@ -78,10 +101,36 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
 
         TermTab {
             tab_id,
+            tab_handle,
             terminal,
+            event_proxy_wrapper,
             resize_handle: Arc::new(FairMutex::new(Box::new(resize_handle))),
             loop_tx: loop_tx.clone(),
             //io_thread,
         }
+    }
+
+    pub(super) fn set_window_id(&mut self, window_id: WindowId) {
+        println!("Set window {:?}", window_id);
+        self.tab_handle.lock().window_id = Some(window_id);
+    }
+}
+
+pub struct TermTabHandle {
+    tab_id: usize,
+    window_id: Option<WindowId>,
+}
+
+#[derive (Clone)]
+pub struct EventProxyWrapper<T> {
+    wrapped_event_proxy: T,
+    tab_handle: Arc<FairMutex<TermTabHandle>>,
+}
+
+impl<T: EventListener> EventListener for EventProxyWrapper<T> {
+    fn send_event(&self, event: Event) {
+        let handle = self.tab_handle.lock();
+        println!("Event from {:?} {}", handle.window_id, handle.tab_id);
+        self.wrapped_event_proxy.send_event(event);
     }
 }
