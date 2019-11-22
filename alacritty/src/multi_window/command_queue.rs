@@ -1,9 +1,6 @@
+use alacritty_terminal::event::Event;
 use crate::multi_window::window_context_tracker::WindowContext;
 use glutin::event_loop::EventLoopWindowTarget;
-use glutin::event::{Event as GlutinEvent};
-
-use alacritty_terminal::term::SizeInfo;
-use alacritty_terminal::event::Event;
 
 use crate::display;
 use crate::config::Config;
@@ -45,61 +42,6 @@ impl MultiWindowCommandQueue {
 
   pub fn has_create_display_command(&self) -> bool {
     self.has_create
-  }
-
-  pub fn handle_multi_window_events(
-    &mut self, 
-    context_tracker: &mut WindowContextTracker, 
-    event: &GlutinEvent<Event>,
-  ) -> MultiWindowCommandResult {
-    use glutin::event::WindowEvent::*;
-
-    let mut is_close_requested = false;
-    let mut win_id = None;
-
-    // Handle Window Activate, Deactivate, Close Events
-    if let GlutinEvent::WindowEvent { event, window_id, .. } = &event {
-        win_id = Some(*window_id);
-
-        match event {
-            Focused(is_focused) => {
-                if *is_focused {
-                    context_tracker.activate_window(*window_id);
-                } else {
-                    context_tracker.deactivate_window(*window_id);
-                }
-            },
-            CloseRequested => {
-                is_close_requested = true;
-                context_tracker.close_window(*window_id);
-            }
-            _ => {}
-        }
-    }
-
-    // handle pty detach (ex. when we type exit)
-    if let GlutinEvent::UserEvent(Event::Exit) = &event {
-        if !is_close_requested {
-            self.push(MultiWindowCommand::CloseCurrentTab);
-        }
-    }
-    
-    // Handle Closing all the tabs within a window (close the window)
-    if win_id != None && context_tracker.has_active_display() {
-        let display_ctx = context_tracker.get_active_display_context();
-        let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-        let term_tab_collection = term_tab_collection_arc.lock();
-
-        if term_tab_collection.is_empty() {
-            context_tracker.close_window(win_id.unwrap());
-        }
-    }
-    
-    if context_tracker.is_empty() {
-      return MultiWindowCommandResult::Exit
-    }
-
-    MultiWindowCommandResult::Continue
   }
 
   pub fn run_user_input_commands(&mut self,
