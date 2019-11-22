@@ -87,6 +87,32 @@ impl MultiWindowProcessor {
             // Process events for the active display, user input etc.
             let mut active_ctx = context_tracker.get_active_window_context();
 
+             // Draw the inactive visible windows
+             for inactive_ctx in context_tracker.get_all_window_contexts() {
+                // TODO check if the display is not minimized
+                if inactive_ctx.window_id != active_ctx.window_id {
+                    let tab = inactive_ctx.get_active_tab();
+                    let terminal = tab.terminal.lock();
+
+                    if terminal.dirty {                       
+                        let mut display = inactive_ctx.display.lock();
+                
+                        let mouse = Default::default();
+                        let modifiers = Default::default();
+                        let message_buffer = MessageBuffer::new();
+
+                        // Redraw screen
+                        display.draw(
+                            terminal,
+                            &message_buffer,
+                            &config,
+                            &mouse,
+                            modifiers,
+                        ); 
+                    }
+                }
+            }
+
             processor.run(
                 &mut event_queue,
                 &mut multi_window_queue,
@@ -108,20 +134,6 @@ impl MultiWindowProcessor {
                 Ok(_) => {}
                 Err(_err) => {}
             };
-
-            // Draw the inactive visible windows
-            for inactive_ctx in context_tracker.get_all_window_contexts() {
-                // TODO check if the display is not minimized
-                if inactive_ctx.window_id != active_ctx.window_id {
-                    let display = inactive_ctx.display.lock();
-                    let tab = inactive_ctx.get_active_tab();
-                    let terminal = tab.terminal.lock();
-
-                    if terminal.dirty {
-                        println!("Dirty inactive Terminal found");
-                    }
-                }
-            }
         });
     }
 
