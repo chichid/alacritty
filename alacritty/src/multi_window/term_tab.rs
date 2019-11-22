@@ -1,27 +1,27 @@
+use mio_extras::channel::Sender;
 use std::sync::Arc;
-use mio_extras::channel::{Sender};
 
+use alacritty_terminal::clipboard::Clipboard;
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::event::OnResize;
-use alacritty_terminal::clipboard::Clipboard;
-use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::Term;
-use alacritty_terminal::term::SizeInfo;
-use alacritty_terminal::event_loop::{EventLoop};
-use alacritty_terminal::tty;
+use alacritty_terminal::event_loop::EventLoop;
 use alacritty_terminal::event_loop::Msg;
+use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::term::SizeInfo;
+use alacritty_terminal::term::Term;
+use alacritty_terminal::tty;
 
 use crate::config::Config;
 
-#[derive (Clone)]
+#[derive(Clone)]
 pub struct TermTab<T> {
-    pub terminal: Arc<FairMutex<Term<T>>>,   
+    pub terminal: Arc<FairMutex<Term<T>>>,
     pub resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
     pub loop_tx: Sender<Msg>,
     // pub io_thread: JoinHandle<(EventLoop, terminal_event_loop::State)>,
 }
 
-impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
+impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
     pub(super) fn new(config: &Config, display_size_info: SizeInfo, event_proxy: T) -> TermTab<T> {
         // Create new native clipboard
         #[cfg(not(any(target_os = "macos", windows)))]
@@ -63,15 +63,16 @@ impl <'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         // renderer and input processing. Note that access to the terminal state is
         // synchronized since the I/O loop updates the state, and the display
         // consumes it periodically.
-        let terminal_event_loop = EventLoop::new(terminal.clone(), event_proxy.clone(), pty, config);
+        let terminal_event_loop =
+            EventLoop::new(terminal.clone(), event_proxy.clone(), pty, config);
 
         // The event loop channel allows write requests from the event processor
         // to be sent to the pty loop and ultimately written to the pty.
         let loop_tx = terminal_event_loop.channel();
-        
+
         // Kick off the I/O thread
         // TODO keep the list of threads for later cleanup
-        //let io_thread = 
+        //let io_thread =
         terminal_event_loop.spawn();
 
         TermTab {

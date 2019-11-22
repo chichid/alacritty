@@ -1,14 +1,10 @@
 use glutin::{
-    self, Context, ContextCurrentState, ContextError, NotCurrent,
-    PossiblyCurrent, WindowedContext,
+    self, Context, ContextCurrentState, ContextError, NotCurrent, PossiblyCurrent, WindowedContext,
 };
 use takeable_option::Takeable;
 
-pub static mut SHARED_GL_CONTEXT_TRACKER: ContextTracker = ContextTracker {
-    next_id: 0,
-    others: Vec::new(),
-    current: None,
-};
+pub static mut SHARED_GL_CONTEXT_TRACKER: ContextTracker =
+    ContextTracker { next_id: 0, others: Vec::new(), current: None };
 
 pub enum ContextWrapper<T: ContextCurrentState> {
     Headless(Context<T>),
@@ -29,29 +25,19 @@ impl<T: ContextCurrentState> ContextWrapper<T> {
         fw: FW,
     ) -> Result<ContextWrapper<T2>, (Self, ContextError)>
     where
-        FH: FnOnce(
-            Context<T>,
-        )
-            -> Result<Context<T2>, (Context<T>, ContextError)>,
+        FH: FnOnce(Context<T>) -> Result<Context<T2>, (Context<T>, ContextError)>,
         FW: FnOnce(
             WindowedContext<T>,
-        ) -> Result<
-            WindowedContext<T2>,
-            (WindowedContext<T>, ContextError),
-        >,
+        ) -> Result<WindowedContext<T2>, (WindowedContext<T>, ContextError)>,
     {
         match self {
             ContextWrapper::Headless(ctx) => match fh(ctx) {
                 Ok(ctx) => Ok(ContextWrapper::Headless(ctx)),
-                Err((ctx, err)) => {
-                    Err((ContextWrapper::Headless(ctx), err))
-                }
+                Err((ctx, err)) => Err((ContextWrapper::Headless(ctx), err)),
             },
             ContextWrapper::Windowed(ctx) => match fw(ctx) {
                 Ok(ctx) => Ok(ContextWrapper::Windowed(ctx)),
-                Err((ctx, err)) => {
-                    Err((ContextWrapper::Windowed(ctx), err))
-                }
+                Err((ctx, err)) => Err((ContextWrapper::Windowed(ctx), err)),
             },
         }
     }
@@ -76,9 +62,7 @@ impl ContextCurrentWrapper {
             ret @ ContextCurrentWrapper::NotCurrent(_) => Ok(ret),
             ContextCurrentWrapper::PossiblyCurrent(ctx) => match f(ctx) {
                 Ok(ctx) => Ok(ContextCurrentWrapper::NotCurrent(ctx)),
-                Err((ctx, err)) => {
-                    Err((ContextCurrentWrapper::PossiblyCurrent(ctx), err))
-                }
+                Err((ctx, err)) => Err((ContextCurrentWrapper::PossiblyCurrent(ctx), err)),
             },
         }
     }
@@ -96,9 +80,7 @@ impl ContextCurrentWrapper {
             ret @ ContextCurrentWrapper::PossiblyCurrent(_) => Ok(ret),
             ContextCurrentWrapper::NotCurrent(ctx) => match f(ctx) {
                 Ok(ctx) => Ok(ContextCurrentWrapper::PossiblyCurrent(ctx)),
-                Err((ctx, err)) => {
-                    Err((ContextCurrentWrapper::NotCurrent(ctx), err))
-                }
+                Err((ctx, err)) => Err((ContextCurrentWrapper::NotCurrent(ctx), err)),
             },
         }
     }
@@ -143,10 +125,7 @@ impl ContextTracker {
             self.current.take();
         }
 
-        let this_index = self
-            .others
-            .binary_search_by(|(sid, _)| sid.cmp(&id))
-            .unwrap();
+        let this_index = self.others.binary_search_by(|(sid, _)| sid.cmp(&id)).unwrap();
         Takeable::take(&mut self.others.remove(this_index).1)
     }
 
@@ -154,15 +133,9 @@ impl ContextTracker {
     where
         F: FnOnce(
             ContextCurrentWrapper,
-        ) -> Result<
-            ContextCurrentWrapper,
-            (ContextCurrentWrapper, ContextError),
-        >,
+        ) -> Result<ContextCurrentWrapper, (ContextCurrentWrapper, ContextError)>,
     {
-        let this_index = self
-            .others
-            .binary_search_by(|(sid, _)| sid.cmp(&id))
-            .unwrap();
+        let this_index = self.others.binary_search_by(|(sid, _)| sid.cmp(&id)).unwrap();
 
         let this_context = Takeable::take(&mut self.others[this_index].1);
 
@@ -181,48 +154,39 @@ impl ContextTracker {
     pub fn get_current(
         &mut self,
         id: ContextId,
-    ) -> Result<&mut ContextWrapper<PossiblyCurrent>, ContextError>
-    {
+    ) -> Result<&mut ContextWrapper<PossiblyCurrent>, ContextError> {
         unsafe {
-            let this_index = self
-                .others
-                .binary_search_by(|(sid, _)| sid.cmp(&id))
-                .unwrap();
+            let this_index = self.others.binary_search_by(|(sid, _)| sid.cmp(&id)).unwrap();
             if Some(id) != self.current {
                 let old_current = self.current.take();
 
                 if let Err(err) = self.modify(id, |ctx| {
-                    ctx.map_not(|ctx| {
-                        ctx.map(
-                            |ctx| ctx.make_current(),
-                            |ctx| ctx.make_current(),
-                        )
-                    })
+                    ctx.map_not(|ctx| ctx.map(|ctx| ctx.make_current(), |ctx| ctx.make_current()))
                 }) {
                     // Oh noes, something went wrong
                     // Let's at least make sure that no context is current.
                     if let Some(old_current) = old_current {
                         if let Err(err2) = self.modify(old_current, |ctx| {
                             ctx.map_possibly(|ctx| {
-                                ctx.map(
-                                    |ctx| ctx.make_not_current(),
-                                    |ctx| ctx.make_not_current(),
-                                )
+                                ctx.map(|ctx| ctx.make_not_current(), |ctx| ctx.make_not_current())
                             })
                         }) {
-                            panic!("Could not `make_current` nor `make_not_current`, {:?}, {:?}", err, err2);
+                            panic!(
+                                "Could not `make_current` nor `make_not_current`, {:?}, {:?}",
+                                err, err2
+                            );
                         }
                     }
 
                     if let Err(err2) = self.modify(id, |ctx| {
                         ctx.map_possibly(|ctx| {
-                            ctx.map(
-                                |ctx| ctx.make_not_current(),
-                                |ctx| ctx.make_not_current(),
-                            )
+                            ctx.map(|ctx| ctx.make_not_current(), |ctx| ctx.make_not_current())
                         })
                     }) {
-                        panic!("Could not `make_current` nor `make_not_current`, {:?}, {:?}", err, err2);
+                        panic!(
+                            "Could not `make_current` nor `make_not_current`, {:?}, {:?}",
+                            err, err2
+                        );
                     }
 
                     return Err(err);
@@ -244,9 +208,7 @@ impl ContextTracker {
             }
 
             match *self.others[this_index].1 {
-                ContextCurrentWrapper::PossiblyCurrent(ref mut ctx) => {
-                    Ok(ctx)
-                }
+                ContextCurrentWrapper::PossiblyCurrent(ref mut ctx) => Ok(ctx),
                 ContextCurrentWrapper::NotCurrent(_) => panic!(),
             }
         }
