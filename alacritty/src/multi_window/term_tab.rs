@@ -118,7 +118,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
     }
 }
 
-pub struct TermTabHandle {
+struct TermTabHandle {
     tab_id: usize,
     window_id: Option<WindowId>,
 }
