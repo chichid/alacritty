@@ -431,6 +431,8 @@ impl Processor {
                 Processor::handle_event(event, &mut processor);
             }
 
+            display.window.make_current();
+
             // Process DisplayUpdate events
             if !display_update_pending.is_empty() {
                 display.handle_update(

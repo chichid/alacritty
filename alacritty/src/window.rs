@@ -392,6 +392,10 @@ impl Window {
         self.window().set_ime_position(PhysicalPosition::from((nspot_x, nspot_y)).to_logical(*dpr));
     }
 
+    pub fn make_current(&self) {
+        unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+    }
+
     pub fn swap_buffers(&self) {
         let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
         ctx.windowed().swap_buffers().expect("swap buffers");

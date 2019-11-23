@@ -129,15 +129,6 @@ fn run(mut window_event_loop: GlutinEventLoop<Event>, mut config: Config) -> Res
 
     let event_proxy = EventProxy::new(window_event_loop.create_proxy());
 
-    // Channel for multi-window communication  
-    let (tx, rx) = channel::channel(); 
-
-    // Create the app window context tracker
-    //
-    // The display context map manages the windows and tabs for the entire application
-    let mut window_context_tracker = WindowContextTracker::new();
-    window_context_tracker.initialize(&config, &window_event_loop, &event_proxy, tx.clone())?;
-
     // Create a config monitor when config was loaded from path
     //
     // The monitor watches the config file for changes and reloads it. Pending
@@ -150,9 +141,9 @@ fn run(mut window_event_loop: GlutinEventLoop<Event>, mut config: Config) -> Res
 
     // Create a mutli window processor
     //
-    // Handles events for all the windows, it owns the context tracker from here on
+    // Handles events for all the windows
     let processor = MultiWindowProcessor::default();
-    processor.run(config, window_event_loop, window_context_tracker, event_proxy, tx.clone(), rx);
+    processor.run(config, window_event_loop, event_proxy)?;
 
     // TODO Cleanup
     // Write ref tests to disk

@@ -99,6 +99,12 @@ impl MultiWindowCommandQueue {
             dispatcher,
         );
 
+        // Close the window if we closed all the tabs within a tab collection
+        if current_tab_collection.is_empty() {
+            print!("It's empty!!");
+            return Ok(true);
+        }
+
         Ok(is_dirty || is_tab_collection_dirty)
     }
 }
