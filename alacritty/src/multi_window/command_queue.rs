@@ -55,11 +55,11 @@ impl MultiWindowCommandQueue {
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<bool, display::Error> {
-        // Drain the displaycommand queue
         let mut is_dirty = false;
         let display = window_ctx.display.lock();
         let size_info = display.size_info;
         let window = &display.window;
+        let window_id = window_ctx.window_id;
         let current_tab_collection = &mut window_ctx.term_tab_collection.lock();
 
         for command in self.queue.iter() {
@@ -69,7 +69,13 @@ impl MultiWindowCommandQueue {
                     true
                 }
                 MultiWindowCommand::CreateTab => {
-                    current_tab_collection.push_tab();
+                    let tab_id = current_tab_collection.add_tab(
+                        config,
+                        size_info,
+                        Some(window_id),
+                        &dispatcher,
+                    );
+                    current_tab_collection.activate_tab(tab_id);
                     true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {

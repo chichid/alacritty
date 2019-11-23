@@ -14,7 +14,6 @@ pub struct TermTabCollection<T> {
     event_proxy: T,
     active_tab: usize,
     term_collection: Vec<TermTab<T>>,
-    pending_tab_to_add: usize,
     pending_tab_activate: usize,
     pending_commit_delete_tab: bool,
 }
@@ -52,9 +51,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         // Add the intiial terminal
         // 
         // The window_id will be pushed to the terminal when the display is created later
-        self.push_tab();
+        self.add_tab(config, dummy_display_size_info, None, &dispatcher);
         self.activate_tab(0);
-        self.commit_changes(None, config, dummy_display_size_info, dispatcher);
     }
 
     pub(super) fn is_empty(&self) -> bool {
@@ -82,13 +80,17 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.term_collection.is_empty()
     }
 
-    pub(super) fn push_tab(&mut self) -> usize {
-        let new_tab_id = self.term_collection.len() + self.pending_tab_to_add;
-        self.pending_tab_to_add += 1;
+    pub(super) fn add_tab(&mut self,
+        config: &Config,
+        size_info: SizeInfo,
+        window_id: Option<WindowId>, 
+        dispatcher: &Sender<MultiWindowEvent>,
+    ) -> usize {
+        let tab_id = self.term_collection.len();
+        let new_tab = TermTab::new(window_id, tab_id, dispatcher.clone(), config, size_info, self.event_proxy.clone());
+        self.term_collection.push(new_tab);
 
-        self.activate_tab(new_tab_id);
-
-        new_tab_id
+        tab_id
     }
 
     pub(super) fn commit_changes(
@@ -100,15 +102,6 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
     ) -> bool {
         // Add new terminals
         let mut is_dirty = false;
-
-        for _ in 0..self.pending_tab_to_add {
-            let tab_id = self.term_collection.len();
-            let new_tab = TermTab::new(window_id, tab_id, dispatcher.clone(), config, size_info, self.event_proxy.clone());
-            self.term_collection.push(new_tab);
-            is_dirty = true;
-        }
-
-        self.pending_tab_to_add = 0;
 
         // Activate the terminal id needed
         if self.pending_tab_activate != self.active_tab
