@@ -86,17 +86,19 @@ impl WindowContextTracker {
     }
 
     pub(super) fn close_window(&mut self, window_id: WindowId) {
-        let display_ctx = self.get_active_window_context();
-        let display_arc = display_ctx.display.clone();
-        let display = display_arc.lock();
-        let window = &display.window;
-        window.close();
+        if !self.map.contains_key(&window_id) {
+            return;
+        }
 
-        if self.active_window_id.unwrap() == window_id {
+        if self.active_window_id != None && self.active_window_id.unwrap() == window_id {
             self.active_window_id = None;
         }
 
-        self.map.remove_entry(&window_id);
+        let (_, window_ctx) = self.map.remove_entry(&window_id).unwrap();
+        let display_arc = window_ctx.display.clone();
+        let display = display_arc.lock();
+        let window = &display.window;
+        window.close();
     }
 
     pub(super) fn create_display(

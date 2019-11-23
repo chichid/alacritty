@@ -160,7 +160,9 @@ impl MultiWindowProcessor {
     }
 
     fn draw_inactive_visible_windows(&self, config: &Config, context_tracker: &mut WindowContextTracker) {
-        let active_window_id = if context_tracker.has_active_window() {
+        let has_active_display = context_tracker.has_active_window();
+
+        let active_window_id = if has_active_display {
             Some( context_tracker.get_active_window_context().window_id)
         } else {
             None
@@ -170,7 +172,6 @@ impl MultiWindowProcessor {
 
         for inactive_ctx in context_tracker.get_all_window_contexts() {
             // TODO check if the window related to the context is maximized
-           let has_active_display = context_tracker.has_active_window();
            if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
                let tab = inactive_ctx.get_active_tab();
                let mut terminal = tab.terminal.lock();
@@ -232,7 +233,7 @@ impl<'a> WindowProcessor<'a> {
 
         // Process events for the active display, user input etc.
         let mut active_context = self.context_tracker.get_active_window_context();
-
+        
         self.processor.run(
             self.event_queue,
             &mut multi_window_queue,
