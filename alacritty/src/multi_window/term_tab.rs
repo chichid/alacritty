@@ -113,9 +113,14 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
     }
 
     pub(super) fn set_window_id(&mut self, window_id: WindowId) {
-        println!("Set window {:?}", window_id);
         self.tab_handle.lock().window_id = Some(window_id);
     }
+
+    pub(super) fn update_tab_id(&mut self, new_id: usize) {
+        self.tab_id = new_id;
+        let mut handle = self.tab_handle.lock();
+        handle.tab_id = new_id;
+    } 
 }
 
 struct TermTabHandle {

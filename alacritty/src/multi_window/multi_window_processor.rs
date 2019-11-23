@@ -51,6 +51,9 @@ impl MultiWindowProcessor {
                 return;
             }
 
+            // Command queue for the multi-window commands such as create_new_window, etc.
+            let mut multi_window_queue = MultiWindowCommandQueue::default();
+
             // Activation, Deactivation and closing of windows
             if self.handle_multi_window_events(
                 event.clone(),
@@ -62,6 +65,7 @@ impl MultiWindowProcessor {
             if self.handle_pty_events(
                 &mut window_context_tracker,
                 &multi_window_rx,
+                &mut multi_window_queue,
             ) { return; }
 
             // Handle input and drawing of the current display
@@ -75,6 +79,7 @@ impl MultiWindowProcessor {
                 control_flow: &mut control_flow,
                 context_tracker: &mut window_context_tracker,
                 multi_window_tx: &multi_window_tx,
+                multi_window_queue: &mut multi_window_queue,
             };
 
             window_processor.run();
@@ -89,24 +94,24 @@ impl MultiWindowProcessor {
     fn handle_pty_events(
         &self, 
         context_tracker: &mut WindowContextTracker, 
-        receiver: &Receiver<MultiWindowEvent>
+        receiver: &Receiver<MultiWindowEvent>,
+        multi_window_queue: &mut MultiWindowCommandQueue,
     ) -> bool {
         match receiver.try_recv() {
             Ok(result) => {
-                // TODO 
-                // handle pty detach (ex. when user types exit)
-                // if let GlutinEvent::UserEvent(Event::Exit) = &event {
-                //     if !is_close_requested {
-                //         window_command_queue.push(MultiWindowCommand::CloseCurrentTab);
-                //     }
-                // }
                 let window_id = result.window_id;
+
                 if window_id != None {
                     let window_id = window_id.unwrap();
                     let ctx = context_tracker.get_context(window_id);
                     let active_tab = ctx.get_active_tab();
 
-                    if active_tab.tab_id == result.tab_id {
+                    // handle pty detach (ex. when user types exit)
+                    if result.wrapped_event == Event::Exit {
+                        let tab_id = result.tab_id;
+                        multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
+                        return false;
+                    } else if active_tab.tab_id == result.tab_id {
                         let mut terminal = active_tab.terminal.lock();
                         terminal.dirty = true;
                     }
@@ -219,6 +224,7 @@ struct WindowProcessor<'a> {
     control_flow: &'a mut ControlFlow,
     context_tracker: &'a mut WindowContextTracker,
     multi_window_tx: &'a Sender<MultiWindowEvent>,
+    multi_window_queue: &'a mut MultiWindowCommandQueue,
 }
 
 impl<'a> WindowProcessor<'a> {
@@ -228,22 +234,19 @@ impl<'a> WindowProcessor<'a> {
             return;
         }
 
-        // Command queue for the multi-window commands such as create_new_window, etc.
-        let mut multi_window_queue = MultiWindowCommandQueue::default();
-
         // Process events for the active display, user input etc.
         let mut active_context = self.context_tracker.get_active_window_context();
         
         self.processor.run(
             self.event_queue,
-            &mut multi_window_queue,
+            self.multi_window_queue,
             &mut active_context,
             self.event.clone(),
             self.control_flow,
             self.config,
         );
 
-        match multi_window_queue.run_user_input_commands(
+        match self.multi_window_queue.run_user_input_commands(
             self.context_tracker,
             &mut active_context,
             self.config,

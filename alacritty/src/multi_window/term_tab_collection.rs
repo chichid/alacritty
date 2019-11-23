@@ -84,5 +84,10 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         if self.active_tab >= self.tab_collection.len() && self.active_tab != 0 {
             self.active_tab = self.tab_collection.len() - 1;
         }
+
+        // Update tab_ids
+        for (tab_id, tab) in self.tab_collection.iter_mut().enumerate() {
+            tab.update_tab_id(tab_id);
+        }
     }
 }
