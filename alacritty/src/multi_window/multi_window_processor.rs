@@ -45,6 +45,12 @@ impl MultiWindowProcessor {
 
         // Run the process event loop
         window_event_loop.run_return(move |event, event_loop, mut control_flow| {
+            // If we closed all the windows
+            if window_context_tracker.is_empty() {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
+
             // Activation, Deactivation and closing of windows
             if self.handle_multi_window_events(
                 event.clone(),
@@ -146,16 +152,16 @@ impl MultiWindowProcessor {
 
         // TODO maybe this should be handled by the context tracker
         // Handle Closing all the tabs within a window (close the window)
-        if win_id != None && context_tracker.has_active_window() {
-            let display_ctx = context_tracker.get_active_window_context();
-            let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-            let term_tab_collection = term_tab_collection_arc.lock();
+        // if win_id != None && context_tracker.has_active_window() {
+        //     let display_ctx = context_tracker.get_active_window_context();
+        //     let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
+        //     let term_tab_collection = term_tab_collection_arc.lock();
 
-            if term_tab_collection.is_empty() {
-                context_tracker.close_window(win_id.unwrap());
-                return true;
-            }
-        }
+        //     if term_tab_collection.is_empty() {
+        //         context_tracker.close_window(win_id.unwrap());
+        //         return true;
+        //     }
+        // }
 
         // If we closed all the windows
         if context_tracker.is_empty() {

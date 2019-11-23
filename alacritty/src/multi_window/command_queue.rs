@@ -55,62 +55,54 @@ impl MultiWindowCommandQueue {
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<bool, display::Error> {
-        let mut is_dirty = false;
         let display = window_ctx.display.lock();
-        let size_info = display.size_info;
-        let window = &display.window;
-        let window_id = window_ctx.window_id;
-        let current_tab_collection = &mut window_ctx.term_tab_collection.lock();
+        let mut tab_collection = window_ctx.term_tab_collection.lock();
+
+        let mut need_redraw = false;
 
         for command in self.queue.iter() {
-            if match command {
+            let is_dirty = match command {
                 MultiWindowCommand::CreateDisplay => {
                     context_tracker.create_display(config, window_event_loop, event_proxy, dispatcher.clone())?;
+
                     true
                 }
                 MultiWindowCommand::CreateTab => {
-                    let tab_id = current_tab_collection.add_tab(
+                    let tab_id = tab_collection.add_tab(
                         config,
-                        size_info,
-                        Some(window_id),
+                        display.size_info,
+                        Some(window_ctx.window_id),
                         &dispatcher,
                     );
-                    current_tab_collection.activate_tab(tab_id);
+
+                    tab_collection.activate_tab(tab_id);
+
                     true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {
-                    current_tab_collection.activate_tab(*tab_id);
+                    tab_collection.activate_tab(*tab_id);
                     true
                 }
                 MultiWindowCommand::CloseCurrentTab => {
-                    current_tab_collection.close_current_tab();
+                    tab_collection.close_current_tab();
                     true
                 }
                 MultiWindowCommand::CloseTab(tab_id) => {
-                    current_tab_collection.close_tab(*tab_id);
+                    tab_collection.close_tab(*tab_id);
                     true
                 }
                 _ => false
-            } {
-                window.request_redraw();
-                is_dirty = true;
-            }            
+            };
+            
+            if is_dirty {
+                need_redraw = true;
+            }
         }
 
-        // Commit any changes to the tab collection
-        let is_tab_collection_dirty = current_tab_collection.commit_changes(
-            Some(window_ctx.window_id),
-            config, 
-            size_info,
-            dispatcher,
-        );
-
-        // Close the window if we closed all the tabs within a tab collection
-        if current_tab_collection.is_empty() {
-            print!("It's empty!!");
-            return Ok(true);
+        if need_redraw {
+            display.window.request_redraw();
         }
 
-        Ok(is_dirty || is_tab_collection_dirty)
+        Ok(need_redraw)
     }
 }

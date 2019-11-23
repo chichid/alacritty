@@ -13,24 +13,19 @@ use std::os::unix::io::AsRawFd;
 pub struct TermTabCollection<T> {
     event_proxy: T,
     active_tab: usize,
-    term_collection: Vec<TermTab<T>>,
-    pending_tab_activate: usize,
-    pending_commit_delete_tab: bool,
+    tab_collection: Vec<TermTab<T>>,
 }
 
 impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
     pub fn get_active_tab(&self) -> TermTab<T> {
-        self.term_collection[self.active_tab].clone()
+        self.tab_collection[self.active_tab].clone()
     }
 
     pub(super) fn new(event_proxy: T) -> TermTabCollection<T> {
         TermTabCollection {
             event_proxy: event_proxy.clone(),
             active_tab: 0,
-            term_collection: Vec::new(),
-            pending_tab_to_add: 0,
-            pending_tab_activate: 0,
-            pending_commit_delete_tab: false,
+            tab_collection: Vec::new(),
         }
     }
 
@@ -51,33 +46,13 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         // Add the intiial terminal
         // 
         // The window_id will be pushed to the terminal when the display is created later
+        // the size_info as well will be updated when the display is created
         self.add_tab(config, dummy_display_size_info, None, &dispatcher);
         self.activate_tab(0);
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.term_collection.is_empty()
-    }
-
-    pub(super) fn activate_tab(&mut self, tab_id: usize) {
-        self.pending_tab_activate = tab_id;
-    }
-
-    pub(super) fn close_current_tab(&mut self) {
-        self.close_tab(self.active_tab);
-        self.activate_tab(self.active_tab);
-    }
-
-    pub(super) fn close_tab(&mut self, tab_id: usize) -> bool {
-        self.term_collection.remove(tab_id);
-
-        if self.active_tab >= self.term_collection.len() && self.active_tab != 0 {
-            self.active_tab = self.term_collection.len() - 1;
-        }
-
-        self.pending_commit_delete_tab = true;
-
-        self.term_collection.is_empty()
+        self.tab_collection.is_empty()
     }
 
     pub(super) fn add_tab(&mut self,
@@ -86,37 +61,28 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         window_id: Option<WindowId>, 
         dispatcher: &Sender<MultiWindowEvent>,
     ) -> usize {
-        let tab_id = self.term_collection.len();
+        let tab_id = self.tab_collection.len();
         let new_tab = TermTab::new(window_id, tab_id, dispatcher.clone(), config, size_info, self.event_proxy.clone());
-        self.term_collection.push(new_tab);
+        self.tab_collection.push(new_tab);
 
         tab_id
     }
 
-    pub(super) fn commit_changes(
-        &mut self, 
-        window_id: Option<WindowId>,
-        config: &Config,
-        size_info: SizeInfo,
-        dispatcher: Sender<MultiWindowEvent>,
-    ) -> bool {
-        // Add new terminals
-        let mut is_dirty = false;
-
-        // Activate the terminal id needed
-        if self.pending_tab_activate != self.active_tab
-            && self.pending_tab_activate < self.term_collection.len()
-        {
-            self.active_tab = self.pending_tab_activate;
-            is_dirty = true;
+    pub(super) fn activate_tab(&mut self, tab_id: usize) {
+        if tab_id < self.tab_collection.len() {
+            self.active_tab = tab_id;
         }
+    }
 
-        // Commit delete changes
-        if self.pending_commit_delete_tab {
-            is_dirty = true;
-            self.pending_commit_delete_tab = false;
+    pub(super) fn close_current_tab(&mut self) {
+        self.close_tab(self.active_tab);        
+    }
+
+    pub(super) fn close_tab(&mut self, tab_id: usize) {
+        self.tab_collection.remove(tab_id);
+
+        if self.active_tab >= self.tab_collection.len() && self.active_tab != 0 {
+            self.active_tab = self.tab_collection.len() - 1;
         }
-
-        is_dirty
     }
 }
