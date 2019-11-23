@@ -16,6 +16,9 @@ use alacritty_terminal::tty;
 
 use crate::config::Config;
 
+#[cfg(not(windows))]
+use std::os::unix::io::AsRawFd;
+
 #[derive(Clone)]
 pub struct TermTab<T> {
     pub tab_id: usize,
