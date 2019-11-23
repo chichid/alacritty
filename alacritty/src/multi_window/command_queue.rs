@@ -55,9 +55,6 @@ impl MultiWindowCommandQueue {
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<bool, display::Error> {
-        let display = window_ctx.display.lock();
-        let mut tab_collection = window_ctx.term_tab_collection.lock();
-
         let mut need_redraw = false;
 
         for command in self.queue.iter() {
@@ -68,6 +65,9 @@ impl MultiWindowCommandQueue {
                     true
                 }
                 MultiWindowCommand::CreateTab => {
+                    let display = window_ctx.display.lock();
+                    let mut tab_collection = window_ctx.term_tab_collection.lock();
+
                     let tab_id = tab_collection.add_tab(
                         config,
                         display.size_info,
@@ -80,15 +80,24 @@ impl MultiWindowCommandQueue {
                     true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {
+                    let display = window_ctx.display.lock();
+                    let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.activate_tab(*tab_id);
+
                     true
                 }
                 MultiWindowCommand::CloseCurrentTab => {
+                    let display = window_ctx.display.lock();
+                    let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_current_tab();
+
                     true
                 }
                 MultiWindowCommand::CloseTab(tab_id) => {
+                    let display = window_ctx.display.lock();
+                    let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_tab(*tab_id);
+
                     true
                 }
                 _ => false
@@ -99,7 +108,13 @@ impl MultiWindowCommandQueue {
             }
         }
 
+        if window_ctx.term_tab_collection.lock().is_empty() {
+            context_tracker.close_window(window_ctx.window_id);
+            return Ok(false);
+        }
+
         if need_redraw {
+            let display = window_ctx.display.lock();
             display.window.request_redraw();
         }
 

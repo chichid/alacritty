@@ -63,6 +63,10 @@ impl WindowContextTracker {
     }
 
     pub fn get_active_window_context(&self) -> WindowContext {
+        if self.active_window_id == None { 
+            panic!("window_context_tracker get_active_window_context called on empty collection") 
+        }
+
         let window_id = &self.active_window_id.unwrap();
         self.map[window_id].clone()
     }

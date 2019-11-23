@@ -101,7 +101,7 @@ impl MultiWindowProcessor {
                 //     }
                 // }
                 let window_id = result.window_id;
-                if window_id != None { 
+                if window_id != None {
                     let window_id = window_id.unwrap();
                     let ctx = context_tracker.get_context(window_id);
                     let active_tab = ctx.get_active_tab();
@@ -150,19 +150,6 @@ impl MultiWindowProcessor {
             }
         }
 
-        // TODO maybe this should be handled by the context tracker
-        // Handle Closing all the tabs within a window (close the window)
-        // if win_id != None && context_tracker.has_active_window() {
-        //     let display_ctx = context_tracker.get_active_window_context();
-        //     let term_tab_collection_arc = display_ctx.term_tab_collection.clone();
-        //     let term_tab_collection = term_tab_collection_arc.lock();
-
-        //     if term_tab_collection.is_empty() {
-        //         context_tracker.close_window(win_id.unwrap());
-        //         return true;
-        //     }
-        // }
-
         // If we closed all the windows
         if context_tracker.is_empty() {
             *control_flow = ControlFlow::Exit;
@@ -173,13 +160,18 @@ impl MultiWindowProcessor {
     }
 
     fn draw_inactive_visible_windows(&self, config: &Config, context_tracker: &mut WindowContextTracker) {
-        let mut active_ctx = context_tracker.get_active_window_context();
+        let has_active_display = context_tracker.has_active_window();
+        let active_window_id = if has_active_display {
+            Some( context_tracker.get_active_window_context().window_id)
+        } else {
+            None
+        };
 
         let mut did_render = false;
 
         for inactive_ctx in context_tracker.get_all_window_contexts() {
-           // TODO check if the display is not minimized
-           if inactive_ctx.window_id != active_ctx.window_id {
+
+           if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
                let tab = inactive_ctx.get_active_tab();
                let mut terminal = tab.terminal.lock();
 
@@ -207,8 +199,9 @@ impl MultiWindowProcessor {
            }
         }
 
-        if did_render {
-            let display = &active_ctx.display.lock();
+        if did_render && has_active_display {
+            let active_ctx = context_tracker.get_active_window_context();
+            let display = active_ctx.display.lock();
             display.window.make_current();    
         }
     }
