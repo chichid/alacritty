@@ -9,10 +9,10 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 
-use glutin::platform::desktop::EventLoopExtDesktop;
 use glutin::dpi::PhysicalSize;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
+use glutin::platform::desktop::EventLoopExtDesktop;
 use log::{debug, info, warn};
 use serde_json as json;
 
@@ -475,9 +475,6 @@ impl<'a, N: Notify> Processor<'a, N> {
                 );
             }
         }
-
-        // Write ref tests to disk
-        // self.write_ref_test_results(&terminal.lock());
     }
 
     /// Handle events from glutin

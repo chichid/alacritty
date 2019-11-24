@@ -45,7 +45,6 @@ impl Url {
     }
 }
 
-#[derive(Clone)]
 pub struct Urls {
     locator: UrlLocator,
     urls: Vec<Url>,
