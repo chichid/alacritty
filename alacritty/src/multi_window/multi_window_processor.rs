@@ -1,24 +1,24 @@
+use crate::multi_window::window_context_tracker::WindowContext;
+use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::event_loop::Notifier;
+use std::sync::Arc;
+use mio_extras::channel::{self, Receiver, Sender};
+
+use glutin::event_loop::ControlFlow;
 use glutin::event_loop::EventLoopWindowTarget;
-use mio_extras::channel::Receiver;
-use mio_extras::channel::Sender;
+use glutin::event::Event as GlutinEvent;
+use glutin::event_loop::EventLoop as GlutinEventLoop;
+use glutin::platform::desktop::EventLoopExtDesktop;
+use alacritty_terminal::event::Event;
+use alacritty_terminal::message_bar::MessageBuffer;
+
 use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::config::Config;
 use crate::event::EventProxy;
-use glutin::event_loop::ControlFlow;
-
-use alacritty_terminal::event::Event;
-use glutin::event::Event as GlutinEvent;
-
-use alacritty_terminal::message_bar::MessageBuffer;
-
 use crate::event::Processor;
 use crate::multi_window::command_queue::{ MultiWindowCommand, MultiWindowCommandQueue };
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 use crate::display::Error as DisplayError;
-
-use glutin::event_loop::EventLoop as GlutinEventLoop;
-use glutin::platform::desktop::EventLoopExtDesktop;
-use mio_extras::channel::{self};
 
 #[derive(Default)]
 pub struct MultiWindowProcessor {}
@@ -32,8 +32,7 @@ impl MultiWindowProcessor {
     ) -> Result<(), DisplayError> {
         let mut event_queue = Vec::new();
         let (multi_window_tx, multi_window_rx) = channel::channel(); 
-        let message_buffer = MessageBuffer::new();
-        let mut processor = Processor::new(message_buffer, config.font.size);
+        let message_buffer = Arc::new(FairMutex::new(MessageBuffer::new()));
 
         let mut window_context_tracker = WindowContextTracker::new();
         window_context_tracker.initialize(
@@ -68,13 +67,21 @@ impl MultiWindowProcessor {
                 &mut multi_window_queue,
             ) { return; }
 
+            // If nothing is active, only process the inactive windows
+            // otherwise process the active window first, then draw the inactive windows
+            if !window_context_tracker.has_active_window() {
+                self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
+                return;
+            }
+        
             // Handle input and drawing of the current display
             let mut window_processor = WindowProcessor {
+                active_context: &mut window_context_tracker.get_active_window_context(),
                 config: &mut config,
-                processor: &mut processor,
                 event_loop: &event_loop,
                 event_proxy: &event_proxy,
                 event_queue: &mut event_queue,
+                message_buffer_arc: message_buffer.clone(),
                 event: event.clone(),
                 control_flow: &mut control_flow,
                 context_tracker: &mut window_context_tracker,
@@ -204,18 +211,18 @@ impl MultiWindowProcessor {
         if did_render && context_tracker.has_active_window() {
             let active_ctx = context_tracker.get_active_window_context();
             let display = active_ctx.display.lock();
-            display.window.make_current();    
+            display.window.make_current();
         }
     }
 }
 
-
-struct WindowProcessor<'a> { 
+struct WindowProcessor<'a> {
+    active_context: &'a mut WindowContext,
     config: &'a mut Config,
-    processor: &'a mut Processor,
     event_loop: &'a EventLoopWindowTarget<Event>,
     event_proxy: &'a EventProxy,
     event_queue: &'a mut Vec<GlutinEvent<Event>>,
+    message_buffer_arc: Arc<FairMutex<MessageBuffer>>,
     event: GlutinEvent<Event>,
     control_flow: &'a mut ControlFlow,
     context_tracker: &'a mut WindowContextTracker,
@@ -225,26 +232,41 @@ struct WindowProcessor<'a> {
 
 impl<'a> WindowProcessor<'a> {
     fn run(&mut self) {
-         // No Active Currently so skip it!
-         if !self.context_tracker.has_active_window() {
-            return;
-        }
+        self.run_processor();
+        self.run_multi_window_input_commands();
+    }
 
-        // Process events for the active display, user input etc.
-        let mut active_context = self.context_tracker.get_active_window_context();
+    fn run_processor(&mut self) {
+        let mut display = self.active_context.display.lock();
+        let active_tab = self.active_context.get_active_tab();
+        let notifier = Notifier(active_tab.loop_tx.clone());
+        let mut pty_resize_handle = active_tab.resize_handle.lock();
+        let mut message_buffer = self.message_buffer_arc.lock();
+        let term_arc = active_tab.terminal;
         
-        self.processor.run(
-            self.event_queue,
+        display.window.make_current();
+
+        let mut processor = Processor::new(
             self.multi_window_queue,
-            &mut active_context,
-            self.event.clone(),
-            self.control_flow,
+            notifier, 
+            &mut pty_resize_handle, 
+            &mut message_buffer, 
             self.config,
+            &mut display,            
         );
 
+        processor.run_iteration(
+            self.event_queue,
+            self.event.clone(),
+            self.control_flow,
+            term_arc,
+        );
+    }
+
+    fn run_multi_window_input_commands(&mut self) {
         match self.multi_window_queue.run_user_input_commands(
             self.context_tracker,
-            &mut active_context,
+            &self.active_context,
             self.config,
             self.event_loop,
             self.event_proxy,

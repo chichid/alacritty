@@ -77,6 +77,8 @@ impl WindowContextTracker {
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
         self.active_window_id = Some(window_id);
+        self.map[&window_id].display.lock().window.make_current();
+        println!("Current window {:?}", window_id);
     }
 
     pub(super) fn deactivate_window(&mut self, window_id: WindowId) {
@@ -120,7 +122,7 @@ impl WindowContextTracker {
         let window_id = display_context.window_id;
         self.map.insert(window_id, display_context);
         self.active_window_id = Some(window_id);
-
+        
         Ok(())
     }
 }

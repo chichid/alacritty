@@ -1,6 +1,4 @@
 //! Process window events
-use alacritty_terminal::event_loop::Notifier;
-use crate::multi_window::window_context_tracker::WindowContext;
 use std::borrow::Cow;
 use std::cmp::max;
 use std::env;
@@ -14,7 +12,6 @@ use std::time::Instant;
 use glutin::dpi::PhysicalSize;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
-use glutin::platform::desktop::EventLoopExtDesktop;
 use log::{debug, info, warn};
 use serde_json as json;
 
@@ -41,7 +38,7 @@ use crate::config::Config;
 use crate::display::Display;
 use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
 use crate::window::Window;
-use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand, MultiWindowCommandResult};
+use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
@@ -57,7 +54,6 @@ impl DisplayUpdate {
 }
 
 pub struct ActionContext<'a, N, T> {
-    pub multi_window_queue: &'a mut MultiWindowCommandQueue,
     pub notifier: &'a mut N,
     pub terminal: &'a mut Term<T>,
     pub size_info: &'a mut SizeInfo,
@@ -70,6 +66,7 @@ pub struct ActionContext<'a, N, T> {
     pub display_update_pending: &'a mut DisplayUpdate,
     pub config: &'a mut Config,
     font_size: &'a mut Size,
+    multi_window_command_queue: &'a mut MultiWindowCommandQueue,
 }
 
 impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionContext<'a, N, T> {
@@ -227,23 +224,23 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn create_new_window(&mut self) {
-        self.multi_window_queue.push(MultiWindowCommand::CreateDisplay);
+        self.multi_window_command_queue.push(MultiWindowCommand::CreateDisplay);
     }
 
     fn create_new_tab(&mut self) {
-        self.multi_window_queue.push(MultiWindowCommand::CreateTab);
+        self.multi_window_command_queue.push(MultiWindowCommand::CreateTab);
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.multi_window_queue.push(MultiWindowCommand::ActivateTab(tab_id));
+        self.multi_window_command_queue.push(MultiWindowCommand::ActivateTab(tab_id));
     }
 
     fn close_current_tab(&mut self) {
-        self.multi_window_queue.push(MultiWindowCommand::CloseCurrentTab);
+        self.multi_window_command_queue.push(MultiWindowCommand::CloseCurrentTab);
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        self.multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
+        self.multi_window_command_queue.push(MultiWindowCommand::CloseTab(tab_id));
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
@@ -329,55 +326,60 @@ impl Default for Mouse {
 ///
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
-pub struct Processor {
+pub struct Processor<'a, N> {
+    multi_window_command_queue: &'a mut MultiWindowCommandQueue,
+    notifier: N,
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
     modifiers: ModifiersState,
-    message_buffer: MessageBuffer,
+    config: &'a mut Config,
+    pty_resize_handle: &'a mut Box<dyn OnResize>,
+    message_buffer: &'a mut MessageBuffer,
+    display: &'a mut Display,
     font_size: Size,
 }
 
-impl Processor {
+impl<'a, N: Notify> Processor<'a, N> {
     /// Create a new event processor
     ///
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        message_buffer: MessageBuffer,
-        font_size: Size,
-    ) -> Processor {
+        multi_window_command_queue: &'a mut MultiWindowCommandQueue,
+        notifier: N,
+        pty_resize_handle: &'a mut Box<dyn OnResize>,
+        message_buffer: &'a mut MessageBuffer,
+        config: &'a mut Config,
+        display: &'a mut Display,
+    ) -> Processor<'a, N> {
         Processor {
+            multi_window_command_queue,
+            notifier,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
             modifiers: Default::default(),
-            font_size,
+            font_size: config.font.size,
+            config,
+            pty_resize_handle,
             message_buffer,
+            display,
         }
     }
 
     /// Run the event loop.
-    pub fn run(
-        &mut self,
-        event_queue: &mut Vec<GlutinEvent<Event>>,
-        multi_window_queue: &mut MultiWindowCommandQueue,
-        window_ctx: &mut WindowContext,
-        event: GlutinEvent<Event>,
-        control_flow: &mut ControlFlow,
-        config: &mut Config,
-    ) {
-        let mut display = window_ctx.display.lock();
-        let mut size_info = display.size_info;
-        let urls = display.urls.clone();
-        let highlighted_url = display.highlighted_url.clone();
-        let window = &mut display.window;
-        let active_tab = window_ctx.get_active_tab();
-        let mut notifier = Notifier(active_tab.loop_tx.clone());
-        let mut resize_handle = active_tab.resize_handle.lock();
-        
+    pub fn run_iteration<T>(&mut self,
+        event_queue: &mut Vec<GlutinEvent<Event>>, 
+        event: GlutinEvent<Event>, 
+        control_flow: &mut ControlFlow, 
+        terminal: Arc<FairMutex<Term<T>>>,
+    )
+    where
+        T: EventListener,
+    {
         {
-            if config.debug.print_events {
+            if self.config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
 
@@ -405,45 +407,43 @@ impl Processor {
                 },
             }
 
-            let mut terminal = active_tab.terminal.lock();
+            let mut terminal = terminal.lock();
 
             let mut display_update_pending = DisplayUpdate::default();
-
+            
             let context = ActionContext {
-                multi_window_queue,
+                multi_window_command_queue: self.multi_window_command_queue,
                 terminal: &mut terminal,
-                notifier: &mut notifier,
+                notifier: &mut self.notifier,
                 mouse: &mut self.mouse,
-                size_info: &mut size_info,
+                size_info: &mut self.display.size_info,
                 received_count: &mut self.received_count,
                 suppress_chars: &mut self.suppress_chars,
                 modifiers: &mut self.modifiers,
                 message_buffer: &mut self.message_buffer,
                 display_update_pending: &mut display_update_pending,
-                window,
+                window: &mut self.display.window,
                 font_size: &mut self.font_size,
-                config,
+                config: &mut self.config,
             };
             let mut processor =
-                input::Processor::new(context, &urls, &highlighted_url);
+                input::Processor::new(context, &self.display.urls, &self.display.highlighted_url);
 
             for event in event_queue.drain(..) {
                 Processor::handle_event(event, &mut processor);
             }
 
-            display.window.make_current();
-
             // Process DisplayUpdate events
             if !display_update_pending.is_empty() {
-                display.handle_update(
+                self.display.handle_update(
                     &mut terminal,
-                    resize_handle.as_mut(),
+                    self.pty_resize_handle.as_mut(),
                     &self.message_buffer,
-                    config,
+                    &self.config,
                     display_update_pending,
                 );
             }
-            
+
             if terminal.dirty {
                 terminal.dirty = false;
 
@@ -453,10 +453,10 @@ impl Processor {
                 }
 
                 // Redraw screen
-                display.draw(
+                self.display.draw(
                     terminal,
                     &self.message_buffer,
-                    config,
+                    &self.config,
                     &self.mouse,
                     self.modifiers,
                 );
@@ -464,17 +464,17 @@ impl Processor {
         }
 
         // Write ref tests to disk
-        //self.write_ref_test_results(&terminal.lock());
+        // self.write_ref_test_results(&terminal.lock());
     }
 
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T, N>(
+    fn handle_event<T>(
         event: GlutinEvent<Event>,
         processor: &mut input::Processor<T, ActionContext<N, T>>,
     ) where
-        T: EventListener, N: Notify
+        T: EventListener,
     {
         match event {
             GlutinEvent::UserEvent(event) => match event {
@@ -655,34 +655,34 @@ impl Processor {
     }
 
     // Write the ref test results to the disk
-    // pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
-    //     if !self.config.debug.ref_test {
-    //         return;
-    //     }
+    pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
+        if !self.config.debug.ref_test {
+            return;
+        }
 
-    //     // dump grid state
-    //     let mut grid = terminal.grid().clone();
-    //     grid.initialize_all(&Cell::default());
-    //     grid.truncate();
+        // dump grid state
+        let mut grid = terminal.grid().clone();
+        grid.initialize_all(&Cell::default());
+        grid.truncate();
 
-    //     let serialized_grid = json::to_string(&grid).expect("serialize grid");
+        let serialized_grid = json::to_string(&grid).expect("serialize grid");
 
-    //     let serialized_size = json::to_string(&self.display.size_info).expect("serialize size");
+        let serialized_size = json::to_string(&self.display.size_info).expect("serialize size");
 
-    //     let serialized_config = format!("{{\"history_size\":{}}}", grid.history_size());
+        let serialized_config = format!("{{\"history_size\":{}}}", grid.history_size());
 
-    //     File::create("./grid.json")
-    //         .and_then(|mut f| f.write_all(serialized_grid.as_bytes()))
-    //         .expect("write grid.json");
+        File::create("./grid.json")
+            .and_then(|mut f| f.write_all(serialized_grid.as_bytes()))
+            .expect("write grid.json");
 
-    //     File::create("./size.json")
-    //         .and_then(|mut f| f.write_all(serialized_size.as_bytes()))
-    //         .expect("write size.json");
+        File::create("./size.json")
+            .and_then(|mut f| f.write_all(serialized_size.as_bytes()))
+            .expect("write size.json");
 
-    //     File::create("./config.json")
-    //         .and_then(|mut f| f.write_all(serialized_config.as_bytes()))
-    //         .expect("write config.json");
-    // }
+        File::create("./config.json")
+            .and_then(|mut f| f.write_all(serialized_config.as_bytes()))
+            .expect("write config.json");
+    }
 }
 
 #[derive(Debug, Clone)]

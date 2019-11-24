@@ -42,14 +42,10 @@ impl MultiWindowCommandQueue {
         self.queue.push(command);
     }
 
-    pub fn has_create_display_command(&self) -> bool {
-        self.has_create
-    }
-
     pub fn run_user_input_commands(
         &mut self,
         context_tracker: &mut WindowContextTracker,
-        window_ctx: &mut WindowContext,
+        window_ctx: &WindowContext,
         config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
@@ -80,21 +76,18 @@ impl MultiWindowCommandQueue {
                     true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {
-                    let display = window_ctx.display.lock();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.activate_tab(*tab_id);
 
                     true
                 }
                 MultiWindowCommand::CloseCurrentTab => {
-                    let display = window_ctx.display.lock();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_current_tab();
 
                     true
                 }
                 MultiWindowCommand::CloseTab(tab_id) => {
-                    let display = window_ctx.display.lock();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_tab(*tab_id);
 
