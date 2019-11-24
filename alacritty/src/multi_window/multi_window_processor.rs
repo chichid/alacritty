@@ -134,12 +134,8 @@ impl MultiWindowProcessor {
     ) -> bool {
         use glutin::event::WindowEvent::*;
 
-        let mut win_id = None;
-
         // Handle Window Activate, Deactivate, Close Events
         if let GlutinEvent::WindowEvent { event, window_id, .. } = event {
-            win_id = Some(window_id);
-
             match event {
                 Focused(is_focused) => {
                     if is_focused {
