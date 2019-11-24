@@ -9,6 +9,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 
+use glutin::platform::desktop::EventLoopExtDesktop;
 use glutin::dpi::PhysicalSize;
 use glutin::event::{ElementState, Event as GlutinEvent, ModifiersState, MouseButton};
 use glutin::event_loop::{ControlFlow, EventLoop, EventLoopProxy};
@@ -368,7 +369,19 @@ impl<'a, N: Notify> Processor<'a, N> {
         }
     }
 
-    /// Run the event loop.
+    /// Run one the event_loop
+    pub fn run<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, mut event_loop: EventLoop<Event>)
+    where
+        T: EventListener,
+    {
+        let mut event_queue = Vec::new();
+
+        event_loop.run_return(|event, _event_loop, control_flow| {
+            self.run_iteration(&mut event_queue, event, control_flow, terminal.clone());
+        });
+    }
+
+    /// Run one iteration of the event loop
     pub fn run_iteration<T>(&mut self,
         event_queue: &mut Vec<GlutinEvent<Event>>, 
         event: GlutinEvent<Event>, 
