@@ -47,6 +47,15 @@ use crate::multi_window::glutin_context_tracker::{
     ContextWrapper, ContextId
 };
 
+extern crate cocoa;
+
+use cocoa::base::{selector, nil, NO};
+use cocoa::foundation::{NSRect, NSPoint, NSSize, NSAutoreleasePool, NSProcessInfo,
+                        NSString};
+use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicyRegular, NSWindow,
+                    NSBackingStoreBuffered, NSMenu, NSMenuItem, NSWindowStyleMask,
+                    NSRunningApplication, NSApplicationActivateIgnoringOtherApps};
+
 // Create a singleton context tracker
 
 // It's required to be in this directory due to the `windows.rc` file
@@ -177,6 +186,15 @@ impl Window {
             }
         }
         
+        // Update the IME position
+        #[cfg(target_os = "macos")] 
+        unsafe {
+            let window = windowed_context.window();
+            let id = window.id();
+            let current_app = NSApplication::sharedApplication(nil).mainWindow();
+            // println!("New window {:?}", ns_window.id());
+        }
+
         let context_id = unsafe { 
             SHARED_GL_CONTEXT_TRACKER.insert(ContextCurrentWrapper::PossiblyCurrent(
                 ContextWrapper::Windowed(windowed_context)
@@ -389,6 +407,7 @@ impl Window {
         let nspot_x = f64::from(px + point.col.0 as f32 * cw);
         let nspot_y = f64::from(py + (point.line.0 + 1) as f32 * ch);
 
+        println!("Set ime position");
         self.window().set_ime_position(PhysicalPosition::from((nspot_x, nspot_y)).to_logical(*dpr));
     }
 
