@@ -155,6 +155,10 @@ impl WindowContext {
         let window_id = display.window.window_id();
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
+        // Handle Cascading on mac os 
+        #[cfg(target_os = "macos")]
+        WindowContext::handle_macos_window_cascading();
+
         // Now we can resize the terminal
         let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
         let mut active_tab = term_tab_collection.lock().get_active_tab().clone();
@@ -175,5 +179,35 @@ impl WindowContext {
     pub fn get_active_tab(&self) -> TermTab<EventProxy> {
         let tab_collection = self.term_tab_collection.lock();
         tab_collection.get_active_tab().clone()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn handle_macos_window_cascading() {
+         use objc::{
+            msg_send, class, sel, sel_impl, declare::ClassDecl,
+            runtime::{Class, Object, Sel, BOOL, NO, YES},
+        };
+
+        use cocoa::{
+            appkit::{
+                self, CGFloat, NSApp, NSApplication, NSApplicationActivationPolicy,
+                NSApplicationPresentationOptions, NSColor, NSRequestUserAttentionType, NSScreen, NSView,
+                NSWindow, NSWindowButton, NSWindowStyleMask,
+            },
+            base::{id, nil},
+            foundation::{NSPoint},
+        };
+
+        unsafe {
+            let sharedApplication = NSApplication::sharedApplication(nil);
+            let windows: id = msg_send![sharedApplication,  windows];
+
+            let mainWindow: id = msg_send![sharedApplication,  mainWindow];
+            let ns_point: NSPoint = msg_send![mainWindow, cascadeTopLeftFromPoint: NSPoint {x: 0.0, y: 0.0}];
+
+            let window: id = msg_send![windows, lastObject];
+            let result: id = msg_send![window, cascadeTopLeftFromPoint: ns_point];   
+        }
+
     }
 }
