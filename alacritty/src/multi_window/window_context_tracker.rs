@@ -71,14 +71,17 @@ impl WindowContextTracker {
         self.map[window_id].clone()
     }
 
-    pub fn get_context(&self, window_id: WindowId) -> WindowContext {
-        self.map[&window_id].clone()
+    pub fn get_context(&self, window_id: WindowId) -> Option<WindowContext> {
+        if !self.map.contains_key(&window_id) {
+            None
+        } else {
+            Some(self.map[&window_id].clone())
+        }
     }
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
         self.active_window_id = Some(window_id);
         self.map[&window_id].display.lock().window.make_current();
-        println!("Current window {:?}", window_id);
     }
 
     pub(super) fn deactivate_window(&mut self, window_id: WindowId) {
@@ -161,7 +164,7 @@ impl WindowContext {
 
         // Now we can resize the terminal
         let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
-        let mut active_tab = term_tab_collection.lock().get_active_tab().clone();
+        let mut active_tab = term_tab_collection.lock().get_active_tab().unwrap();
         active_tab.set_window_id(window_id);
 
         let term_arc = active_tab.terminal.clone();
@@ -176,9 +179,9 @@ impl WindowContext {
         })
     }
 
-    pub fn get_active_tab(&self) -> TermTab<EventProxy> {
+    pub fn get_active_tab(&self) -> Option<TermTab<EventProxy>> {
         let tab_collection = self.term_tab_collection.lock();
-        tab_collection.get_active_tab().clone()
+        tab_collection.get_active_tab()
     }
 
     #[cfg(target_os = "macos")]

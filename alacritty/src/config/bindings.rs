@@ -514,7 +514,6 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
         Key::C, [logo: true]; Action::Copy;
         Key::H, [logo: true]; Action::Hide;
         Key::Q, [logo: true]; Action::Quit;
-        Key::W, [logo: true]; Action::Quit;
     )
 }
 

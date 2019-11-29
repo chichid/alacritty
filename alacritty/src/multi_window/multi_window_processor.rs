@@ -60,12 +60,12 @@ impl MultiWindowProcessor {
                 &mut window_context_tracker,
             ) { return; }
 
-            // PTY Detach and dirty state for inactive terminals
+            // PTY Detach for all windows and dirty state for inactive terminals
             if self.handle_pty_events(
                 &mut window_context_tracker,
                 &multi_window_rx,
                 &mut multi_window_queue,
-            ) { return; }
+            ) == None { return; }
 
             // If nothing is active, only process the inactive windows
             // otherwise process the active window first, then draw the inactive windows
@@ -103,32 +103,36 @@ impl MultiWindowProcessor {
         context_tracker: &mut WindowContextTracker, 
         receiver: &Receiver<MultiWindowEvent>,
         multi_window_queue: &mut MultiWindowCommandQueue,
-    ) -> bool {
+    ) -> Option<bool> {
         match receiver.try_recv() {
             Ok(result) => {
                 let window_id = result.window_id;
 
-                if window_id != None {
-                    let window_id = window_id.unwrap();
-                    let ctx = context_tracker.get_context(window_id);
-                    let active_tab = ctx.get_active_tab();
-
-                    // handle pty detach (ex. when user types exit)
-                    if result.wrapped_event == Event::Exit {
-                        let tab_id = result.tab_id;
-                        multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
-                        return false;
-                    } else if active_tab.tab_id == result.tab_id {
-                        let mut terminal = active_tab.terminal.lock();
-                        terminal.dirty = true;
-                    }
+                if window_id == None {
+                    return None;
                 }
 
-                true
+                let window_id = window_id.unwrap();
+                let ctx = context_tracker.get_context(window_id)?;
+                let active_tab = ctx.get_active_tab()?;
+
+                if result.wrapped_event == Event::Exit {
+                    let tab_id = result.tab_id;
+                    multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
+                    return None;
+                }
+                
+                if active_tab.tab_id == result.tab_id {
+                    let mut terminal = active_tab.terminal.lock();
+                    terminal.dirty = true;
+                }
+
+                Some(true)
             },
             Err(err) => {
                 // TODO log errors
-                false
+                // change the result of this function to be Result once that's done
+                Some(true)
             }
         }
     }
@@ -181,7 +185,7 @@ impl MultiWindowProcessor {
         for inactive_ctx in context_tracker.get_all_window_contexts() {
             // TODO check if the window related to the context is maximized
            if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
-               let tab = inactive_ctx.get_active_tab();
+               let tab = inactive_ctx.get_active_tab().unwrap();
                let mut terminal = tab.terminal.lock();
 
                if terminal.dirty {   
@@ -239,6 +243,10 @@ impl<'a> WindowProcessor<'a> {
     fn run_processor(&mut self) {
         let mut display = self.active_context.display.lock();
         let active_tab = self.active_context.get_active_tab();
+
+        if active_tab.is_none() { return; }
+
+        let active_tab = active_tab.unwrap();
         let notifier = Notifier(active_tab.loop_tx.clone());
         let mut pty_resize_handle = active_tab.resize_handle.lock();
         let mut message_buffer = self.message_buffer_arc.lock();
