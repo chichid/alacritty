@@ -399,7 +399,6 @@ impl<'a, N: Notify> Processor<'a, N> {
             match &event {
                 // Check for shutdown
                 GlutinEvent::UserEvent(Event::Exit) => {
-                    *control_flow = ControlFlow::Exit;
                     return;
                 },
                 // Process events
