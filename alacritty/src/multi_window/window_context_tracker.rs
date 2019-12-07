@@ -102,8 +102,7 @@ impl WindowContextTracker {
         let (_, window_ctx) = self.map.remove_entry(&window_id).unwrap();
         let display_arc = window_ctx.display.clone();
         let display = display_arc.lock();
-        let window = &display.window;
-        window.close();
+        display.window.close();
     }
 
     pub(super) fn create_display(

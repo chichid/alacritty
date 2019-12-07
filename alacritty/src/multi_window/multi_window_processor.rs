@@ -44,12 +44,6 @@ impl MultiWindowProcessor {
 
         // Run the process event loop
         window_event_loop.run_return(move |event, event_loop, mut control_flow| {
-            // If we closed all the windows
-            if window_context_tracker.is_empty() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
             // Command queue for the multi-window commands such as create_new_window, etc.
             let mut multi_window_queue = MultiWindowCommandQueue::default();
 
@@ -66,6 +60,12 @@ impl MultiWindowProcessor {
                 &multi_window_rx,
                 &mut multi_window_queue,
             ) == None { return; }
+
+            // If we closed all the windows
+            if window_context_tracker.is_empty() {
+                *control_flow = ControlFlow::Exit;
+                return;
+            }
 
             // If nothing is active, only process the inactive windows
             // otherwise process the active window first, then draw the inactive windows
@@ -106,22 +106,15 @@ impl MultiWindowProcessor {
     ) -> Option<bool> {
         match receiver.try_recv() {
             Ok(result) => {
-                let window_id = result.window_id;
-
-                if window_id == None {
-                    return None;
-                }
-
-                let window_id = window_id.unwrap();
-                let ctx = context_tracker.get_context(window_id)?;
-                let active_tab = ctx.get_active_tab()?;
-
+                let ctx = context_tracker.get_context(result.window_id?)?;
                 if result.wrapped_event == Event::Exit {
                     let tab_id = result.tab_id;
-                    multi_window_queue.push(MultiWindowCommand::CloseTab(tab_id));
+                    let mut tab_collection = ctx.term_tab_collection.lock();
+                    tab_collection.close_tab(tab_id);
                     return None;
                 }
                 
+                let active_tab = ctx.get_active_tab()?;
                 if active_tab.tab_id == result.tab_id {
                     let mut terminal = active_tab.terminal.lock();
                     terminal.dirty = true;
@@ -160,12 +153,6 @@ impl MultiWindowProcessor {
                 }
                 _ => {}
             }
-        }
-
-        // If we closed all the windows
-        if context_tracker.is_empty() {
-            *control_flow = ControlFlow::Exit;
-            return true;
         }
         
         false
