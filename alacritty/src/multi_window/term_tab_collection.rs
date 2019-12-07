@@ -7,9 +7,6 @@ use alacritty_terminal::term::SizeInfo;
 use crate::config::Config;
 use crate::multi_window::term_tab::TermTab;
 
-#[cfg(not(windows))]
-use std::os::unix::io::AsRawFd;
-
 pub struct TermTabCollection<T> {
     event_proxy: T,
     active_tab: usize,

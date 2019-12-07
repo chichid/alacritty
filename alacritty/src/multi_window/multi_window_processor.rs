@@ -16,7 +16,7 @@ use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::config::Config;
 use crate::event::EventProxy;
 use crate::event::Processor;
-use crate::multi_window::command_queue::{ MultiWindowCommand, MultiWindowCommandQueue };
+use crate::multi_window::command_queue::{ MultiWindowCommandQueue };
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 use crate::display::Error as DisplayError;
 
@@ -50,7 +50,6 @@ impl MultiWindowProcessor {
             // Activation, Deactivation and closing of windows
             if self.handle_multi_window_events(
                 event.clone(),
-                control_flow,
                 &mut window_context_tracker,
             ) { return; }
 
@@ -58,7 +57,6 @@ impl MultiWindowProcessor {
             if self.handle_pty_events(
                 &mut window_context_tracker,
                 &multi_window_rx,
-                &mut multi_window_queue,
             ) == None { return; }
 
             // If we closed all the windows
@@ -101,8 +99,7 @@ impl MultiWindowProcessor {
     fn handle_pty_events(
         &self, 
         context_tracker: &mut WindowContextTracker, 
-        receiver: &Receiver<MultiWindowEvent>,
-        multi_window_queue: &mut MultiWindowCommandQueue,
+        receiver: &Receiver<MultiWindowEvent>
     ) -> Option<bool> {
         match receiver.try_recv() {
             Ok(result) => {
@@ -133,7 +130,6 @@ impl MultiWindowProcessor {
     fn handle_multi_window_events(
         &self,
         event: GlutinEvent<Event>,
-        control_flow: &mut ControlFlow,
         context_tracker: &mut WindowContextTracker,
     ) -> bool {
         use glutin::event::WindowEvent::*;

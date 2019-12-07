@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use glutin::window::WindowId;
-use mio_extras::channel::{self, Sender};
+use mio_extras::channel::Sender;
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::clipboard::Clipboard;

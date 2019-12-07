@@ -72,11 +72,11 @@ impl WindowContextTracker {
     }
 
     pub fn get_context(&self, window_id: WindowId) -> Option<WindowContext> {
-        if !self.map.contains_key(&window_id) {
-            None
-        } else {
-            Some(self.map[&window_id].clone())
+        if self.map.contains_key(&window_id) {
+            return Some(self.map[&window_id].clone());
         }
+
+        None
     }
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
@@ -186,29 +186,23 @@ impl WindowContext {
     #[cfg(target_os = "macos")]
     fn handle_macos_window_cascading() {
          use objc::{
-            msg_send, class, sel, sel_impl, declare::ClassDecl,
-            runtime::{Class, Object, Sel, BOOL, NO, YES},
+            msg_send, sel, sel_impl
         };
 
         use cocoa::{
-            appkit::{
-                self, CGFloat, NSApp, NSApplication, NSApplicationActivationPolicy,
-                NSApplicationPresentationOptions, NSColor, NSRequestUserAttentionType, NSScreen, NSView,
-                NSWindow, NSWindowButton, NSWindowStyleMask,
-            },
             base::{id, nil},
             foundation::{NSPoint},
         };
 
         unsafe {
-            let sharedApplication = NSApplication::sharedApplication(nil);
-            let windows: id = msg_send![sharedApplication,  windows];
+            let shared_application = cocoa::appkit::NSApplication::sharedApplication(nil);
+            let windows: id = msg_send![shared_application,  windows];
 
-            let mainWindow: id = msg_send![sharedApplication,  mainWindow];
-            let ns_point: NSPoint = msg_send![mainWindow, cascadeTopLeftFromPoint: NSPoint {x: 0.0, y: 0.0}];
+            let main_window: id = msg_send![shared_application,  mainWindow];
+            let ns_point: NSPoint = msg_send![main_window, cascadeTopLeftFromPoint: NSPoint {x: 0.0, y: 0.0}];
 
             let window: id = msg_send![windows, lastObject];
-            let result: id = msg_send![window, cascadeTopLeftFromPoint: ns_point];   
+            let _result: id = msg_send![window, cascadeTopLeftFromPoint: ns_point];   
         }
 
     }
