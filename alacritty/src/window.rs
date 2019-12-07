@@ -412,6 +412,9 @@ impl Window {
     }
 
     pub fn close(&self) {
+        #[cfg(target_os="macos")]
+        let ctx = unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+
         unsafe { SHARED_GL_CONTEXT_TRACKER.remove(self.context_id); }
     }
 
