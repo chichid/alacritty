@@ -14,20 +14,20 @@ pub struct TermTabCollection<T> {
 }
 
 impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
+     pub(super) fn new(event_proxy: T) -> TermTabCollection<T> {
+        TermTabCollection {
+            event_proxy: event_proxy.clone(),
+            active_tab: 0,
+            tab_collection: Vec::new(),
+        }
+    }
+
     pub fn get_active_tab(&self) -> Option<TermTab<T>> {
         if self.active_tab >= self.tab_collection.len() {
             return None;
         }
 
         Some(self.tab_collection[self.active_tab].clone())
-    }
-
-    pub(super) fn new(event_proxy: T) -> TermTabCollection<T> {
-        TermTabCollection {
-            event_proxy: event_proxy.clone(),
-            active_tab: 0,
-            tab_collection: Vec::new(),
-        }
     }
 
     pub(super) fn initialize(&mut self, config: &Config, dispatcher: Sender<MultiWindowEvent>) {
