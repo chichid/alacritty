@@ -274,7 +274,7 @@ impl Window {
 
         WindowBuilder::new()
             .with_title(title)
-            .with_visible(true)
+            .with_visible(false)
             .with_decorations(decorations)
             .with_transparent(true)
             .with_maximized(window_config.startup_mode() == StartupMode::Maximized)
