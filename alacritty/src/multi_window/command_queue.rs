@@ -50,15 +50,11 @@ impl MultiWindowCommandQueue {
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
-    ) -> Result<bool, display::Error> {
-        let mut need_redraw = false;
-
+    ) -> Result<(), display::Error> {
         for command in self.queue.iter() {
-            let is_dirty = match command {
+            match command {
                 MultiWindowCommand::CreateDisplay => {
                     context_tracker.create_display(config, window_event_loop, event_proxy, dispatcher.clone())?;
-
-                    true
                 }
                 MultiWindowCommand::CreateTab => {
                     let display = window_ctx.display.lock();
@@ -72,45 +68,29 @@ impl MultiWindowCommandQueue {
                     );
 
                     tab_collection.activate_tab(tab_id);
-
-                    true
                 }
                 MultiWindowCommand::ActivateTab(tab_id) => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.activate_tab(*tab_id);
-
-                    true
                 }
                 MultiWindowCommand::CloseCurrentTab => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_current_tab();
-
-                    true
                 }
                 MultiWindowCommand::CloseTab(tab_id) => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_tab(*tab_id);
-
-                    true
                 }
-                _ => false
             };
-            
-            if is_dirty {
-                need_redraw = true;
-            }
         }
 
         if window_ctx.term_tab_collection.lock().is_empty() {
             context_tracker.close_window(window_ctx.window_id);
-            return Ok(false);
-        }
-
-        if need_redraw {
+        } else if !self.queue.is_empty() {
             let display = window_ctx.display.lock();
             display.window.request_redraw();
         }
 
-        Ok(need_redraw)
+        Ok(())
     }
 }
