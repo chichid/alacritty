@@ -149,6 +149,9 @@ impl<T: EventListener> EventListener for EventProxyWrapper<T> {
     fn send_event(&self, event: Event) {
         let handle = self.tab_handle.lock();
 
+        // TODO handle errors, and make sure we don't forward the events bellow 
+        // unless it's targetting the current active tab
+
         self.dispatcher.send(MultiWindowEvent {
             window_id: handle.window_id,
             tab_id: handle.tab_id,
