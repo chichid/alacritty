@@ -147,33 +147,29 @@ impl WindowContext {
         //
         // The tab collection is a collection of TerminalTab that holds the state of all tabs
         let mut term_tab_collection = TermTabCollection::new(event_proxy.clone());
-        term_tab_collection.initialize(&config, dispatcher);
+        let mut active_tab = term_tab_collection.initialize(&config, dispatcher);
 
         // Create a display
         //
         // The display manages a window and can draw the terminal.
-        let display = Display::new(config, estimated_dpr, window_event_loop)?;
+        let mut display = Display::new(config, estimated_dpr, window_event_loop)?;
         let window_id = display.window.window_id();
+        active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
         // Handle Cascading on mac os 
         #[cfg(target_os = "macos")]
         WindowContext::handle_macos_window_cascading();
 
-        // Now we can resize the terminal
-        let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
-        let mut active_tab = term_tab_collection.lock().get_active_tab().unwrap();
-        active_tab.set_window_id(window_id);
-
-        let term_arc = active_tab.terminal.clone();
-        let mut term = term_arc.lock();
-        term.resize(&display.size_info);
-        term.dirty = true;
+        // Sync Size of the terminal and display
+        let inner_size = display.window.inner_size();
+        display.window.set_inner_size(glutin::dpi::LogicalSize::new(0.0, 0.0));
+        display.window.set_inner_size(inner_size);
 
         Ok(WindowContext {
             window_id: display.window.window_id(),
             display: Arc::new(FairMutex::new(display)),
-            term_tab_collection: term_tab_collection.clone(),
+            term_tab_collection: Arc::new(FairMutex::new(term_tab_collection)),
         })
     }
 
