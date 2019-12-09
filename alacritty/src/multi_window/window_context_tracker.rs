@@ -185,14 +185,8 @@ impl WindowContext {
 
     #[cfg(target_os = "macos")]
     fn handle_macos_window_cascading() {
-         use objc::{
-            msg_send, sel, sel_impl
-        };
-
-        use cocoa::{
-            base::{id, nil},
-            foundation::{NSPoint},
-        };
+        use objc::{ msg_send, sel, sel_impl };
+        use cocoa::{ base::{id, nil}, foundation::{NSPoint}};
 
         unsafe {
             let shared_application = cocoa::appkit::NSApplication::sharedApplication(nil);
