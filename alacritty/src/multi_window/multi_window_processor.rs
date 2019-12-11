@@ -181,8 +181,6 @@ impl MultiWindowProcessor {
             None
         };
 
-        let mut did_render = false;
-
         for inactive_ctx in context_tracker.get_all_window_contexts() {
             // TODO check if the window related to the context is maximized
            if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
@@ -190,7 +188,6 @@ impl MultiWindowProcessor {
                let mut terminal = tab.terminal.lock();
 
                if terminal.dirty {   
-                   did_render = true;                    
                    terminal.dirty = false;
 
                    let mut display = inactive_ctx.display.lock();
@@ -199,7 +196,7 @@ impl MultiWindowProcessor {
                    let modifiers = Default::default();
                    let message_buffer = MessageBuffer::new();
 
-                   display.window.make_current();
+                   display.make_current();
                    
                    // Redraw screen
                    display.draw(
@@ -211,12 +208,6 @@ impl MultiWindowProcessor {
                    ); 
                }
            }
-        }
-
-        if did_render && context_tracker.has_active_window() {
-            let active_ctx = context_tracker.get_active_window_context();
-            let display = active_ctx.display.lock();
-            display.window.make_current();
         }
     }
 }
@@ -253,7 +244,7 @@ impl<'a> WindowProcessor<'a> {
         let mut message_buffer = self.message_buffer_arc.lock();
         let term_arc = active_tab.terminal;
         
-        display.window.make_current();
+        display.make_current();
 
         let mut processor = Processor::new(
             self.multi_window_queue,

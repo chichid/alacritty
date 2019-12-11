@@ -285,6 +285,11 @@ impl Display {
         size_info.cell_height = cell_height;
     }
 
+    pub fn make_current(&mut self) {
+        self.window.make_current();
+        self.renderer.resize(&self.size_info);
+    }
+
     /// Process update events
     pub fn handle_update<T>(
         &mut self,

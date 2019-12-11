@@ -393,7 +393,7 @@ impl Window {
     }
 
     pub fn make_current(&self) {
-        unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap() };
+        unsafe { SHARED_GL_CONTEXT_TRACKER.get_current(self.context_id).unwrap(); };
     }
 
     pub fn swap_buffers(&self) {
