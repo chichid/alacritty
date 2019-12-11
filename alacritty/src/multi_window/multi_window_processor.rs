@@ -50,6 +50,8 @@ impl MultiWindowProcessor {
             // Activation, Deactivation and closing of windows
             if self.handle_multi_window_events(
                 event.clone(),
+                &mut control_flow,
+                &mut event_queue,
                 &mut window_context_tracker,
             ) { return; }
 
@@ -130,25 +132,41 @@ impl MultiWindowProcessor {
     fn handle_multi_window_events(
         &self,
         event: GlutinEvent<Event>,
+        control_flow: &mut ControlFlow,
+        event_queue: &mut Vec<GlutinEvent<Event>>,
         context_tracker: &mut WindowContextTracker,
     ) -> bool {
-        use glutin::event::WindowEvent::*;
+        
+        match event {
+            // Process events
+            GlutinEvent::EventsCleared => {
+                *control_flow = ControlFlow::Wait;
 
-        // Handle Window Activate, Deactivate, Close Events
-        if let GlutinEvent::WindowEvent { event, window_id, .. } = event {
-            match event {
-                Focused(is_focused) => {
-                    if is_focused {
-                        context_tracker.activate_window(window_id);
-                    } else {
-                        context_tracker.deactivate_window(window_id);
+                if event_queue.is_empty() {
+                    return true;
+                }
+            },
+
+            // Handle Window Activate, Deactivate, Close Events
+            GlutinEvent::WindowEvent { event, window_id, .. } => {
+                use glutin::event::WindowEvent::*;
+
+                match event {
+                    Focused(is_focused) => {
+                        if is_focused {
+                            context_tracker.activate_window(window_id);
+                        } else {
+                            context_tracker.deactivate_window(window_id);
+                        }
                     }
+                    CloseRequested => {
+                        context_tracker.close_window(window_id);
+                    }
+                    _ => {}
                 }
-                CloseRequested => {
-                    context_tracker.close_window(window_id);
-                }
-                _ => {}
-            }
+            },
+
+            _ => {} 
         }
         
         false
