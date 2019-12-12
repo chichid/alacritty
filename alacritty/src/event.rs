@@ -603,18 +603,16 @@ impl Processor {
                         processor.mouse_wheel_input(delta, phase, modifiers);
                     },
                     Focused(is_focused) => {
-                        if window_id == processor.ctx.window.window_id() {
-                            processor.ctx.terminal.is_focused = is_focused;
-                            processor.ctx.terminal.dirty = true;
+                        processor.ctx.terminal.is_focused = is_focused;
+                        processor.ctx.terminal.dirty = true;
 
-                            if is_focused {
-                                processor.ctx.window.set_urgent(false);
-                            } else {
-                                processor.ctx.window.set_mouse_visible(true);
-                            }
-
-                            processor.on_focus_change(is_focused);
+                        if is_focused {
+                            processor.ctx.window.set_urgent(false);
+                        } else {
+                            processor.ctx.window.set_mouse_visible(true);
                         }
+
+                        processor.on_focus_change(is_focused);
                     },
                     DroppedFile(path) => {
                         let path: String = path.to_string_lossy().into();
