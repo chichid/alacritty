@@ -290,6 +290,13 @@ impl Display {
         self.renderer.resize(&self.size_info);
     }
 
+    pub fn request_resize(&mut self) {
+        // Sync Size of the terminal and display
+        let inner_size = self.window.inner_size();
+        self.window.set_inner_size(glutin::dpi::LogicalSize::new(inner_size.width - 1.0, inner_size.height));
+        self.window.set_inner_size(inner_size);
+    }
+
     /// Process update events
     pub fn handle_update<T>(
         &mut self,

@@ -81,6 +81,7 @@ impl WindowContextTracker {
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
         self.active_window_id = Some(window_id);
+        self.get_active_window_context().display.lock().request_resize();
     }
 
     pub(super) fn deactivate_window(&mut self, window_id: WindowId) {
@@ -162,9 +163,7 @@ impl WindowContext {
         WindowContext::handle_macos_window_cascading();
 
         // Sync Size of the terminal and display
-        let inner_size = display.window.inner_size();
-        display.window.set_inner_size(glutin::dpi::LogicalSize::new(0.0, 0.0));
-        display.window.set_inner_size(inner_size);
+        display.request_resize();
 
         Ok(WindowContext {
             window_id: display.window.window_id(),
