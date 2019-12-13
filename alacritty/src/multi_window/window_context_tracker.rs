@@ -105,7 +105,7 @@ impl WindowContextTracker {
         display.window.close();
     }
 
-    pub(super) fn create_display(
+    pub(super) fn create_window_context(
         &mut self,
         config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,

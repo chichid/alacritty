@@ -225,7 +225,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn create_new_window(&mut self) {
-        self.multi_window_command_queue.push(MultiWindowCommand::CreateDisplay);
+        self.multi_window_command_queue.push(MultiWindowCommand::NewWindow);
     }
 
     fn create_new_tab(&mut self) {

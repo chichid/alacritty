@@ -12,7 +12,7 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 
 #[derive(Clone, PartialEq)]
 pub enum MultiWindowCommand {
-    CreateDisplay,
+    NewWindow,
     CreateTab,
     ActivateTab(usize), // tab_id
     CloseCurrentTab,
@@ -35,7 +35,7 @@ pub struct MultiWindowCommandQueue {
 
 impl MultiWindowCommandQueue {
     pub fn push(&mut self, command: MultiWindowCommand) {
-        if command == MultiWindowCommand::CreateDisplay {
+        if command == MultiWindowCommand::NewWindow {
             self.has_create = true;
         }
 
@@ -53,8 +53,8 @@ impl MultiWindowCommandQueue {
     ) -> Result<(), display::Error> {
         for command in self.queue.iter() {
             match command {
-                MultiWindowCommand::CreateDisplay => {
-                    context_tracker.create_display(config, window_event_loop, event_proxy, dispatcher.clone())?;
+                MultiWindowCommand::NewWindow => {
+                    context_tracker.create_window_context(config, window_event_loop, event_proxy, dispatcher.clone())?;
                 }
                 MultiWindowCommand::CreateTab => {
                     let display = window_ctx.display.lock();
