@@ -33,6 +33,7 @@ use alacritty_terminal::term::{SizeInfo, Term};
 #[cfg(not(windows))]
 use alacritty_terminal::tty;
 use alacritty_terminal::util::{limit, start_daemon};
+use alacritty_terminal::event_loop::Notifier;
 
 use crate::config;
 use crate::config::Config;
@@ -327,72 +328,106 @@ impl Default for Mouse {
 ///
 /// Stores some state from received events and dispatches actions when they are
 /// triggered.
-pub struct Processor<'a, N> {
-    multi_window_command_queue: &'a mut MultiWindowCommandQueue,
-    notifier: N,
+pub struct Processor {
     mouse: Mouse,
     received_count: usize,
     suppress_chars: bool,
     modifiers: ModifiersState,
-    config: &'a mut Config,
-    pty_resize_handle: &'a mut Box<dyn OnResize>,
-    message_buffer: &'a mut MessageBuffer,
-    display: &'a mut Display,
+    pty_resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
+    message_buffer: MessageBuffer,
+    display: Display,
     font_size: Size,
 }
 
-impl<'a, N: Notify> Processor<'a, N> {
+impl Processor {
     /// Create a new event processor
     ///
     /// Takes a writer which is expected to be hooked up to the write end of a
     /// pty.
     pub fn new(
-        multi_window_command_queue: &'a mut MultiWindowCommandQueue,
-        notifier: N,
-        pty_resize_handle: &'a mut Box<dyn OnResize>,
-        message_buffer: &'a mut MessageBuffer,
-        config: &'a mut Config,
-        display: &'a mut Display,
-    ) -> Processor<'a, N> {
+        font_size: Size,
+        pty_resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
+        message_buffer: MessageBuffer,
+        display: Display,
+    ) -> Processor {
         Processor {
-            multi_window_command_queue,
-            notifier,
             mouse: Default::default(),
             received_count: 0,
             suppress_chars: false,
             modifiers: Default::default(),
-            font_size: config.font.size,
-            config,
+            font_size,
             pty_resize_handle,
             message_buffer,
             display,
         }
     }
 
+    pub fn close_window(&self) {
+        self.display.window.close();
+    }
+
+    pub fn request_redraw(&self) {
+        self.display.window.request_redraw();
+    }
+
+    pub fn get_size_info(&self) -> SizeInfo {
+        self.display.size_info
+    }
+
+    pub fn make_current(&mut self) {
+        self.display.make_current();
+    }
+
+    pub fn redraw<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, config: &Config) {
+        self.display.make_current();
+
+        self.display.draw(
+            terminal.lock(),
+            &self.message_buffer,
+            &config,
+            &self.mouse,
+            self.modifiers,
+        ); 
+    }
+
     /// Run one the event_loop
-    pub fn run<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, mut event_loop: EventLoop<Event>)
-    where
-        T: EventListener,
+    pub fn run<T>(
+        &mut self,
+        notifier: &mut Notifier, 
+        terminal: Arc<FairMutex<Term<T>>>, 
+        mut event_loop: EventLoop<Event>,
+        config: &mut Config,
+    ) where T: EventListener,
     {
         let mut event_queue = Vec::new();
 
         event_loop.run_return(|event, _event_loop, control_flow| {
-            self.run_iteration(&mut event_queue, event, control_flow, terminal.clone());
+            let mut command_queue = MultiWindowCommandQueue::default();
+            self.run_iteration(
+                notifier,
+                &mut event_queue, 
+                event,
+                control_flow,
+                terminal.clone(),
+                config,
+                &mut command_queue
+            );
         });
     }
 
     /// Run one iteration of the event loop
     pub fn run_iteration<T>(&mut self,
+        notifier: &mut Notifier,
         event_queue: &mut Vec<GlutinEvent<Event>>, 
         event: GlutinEvent<Event>, 
         control_flow: &mut ControlFlow, 
         terminal: Arc<FairMutex<Term<T>>>,
-    )
-    where
-        T: EventListener,
+        config: &mut Config,
+        multi_window_command_queue: &mut MultiWindowCommandQueue,
+    ) where T: EventListener,
     {
         {
-            if self.config.debug.print_events {
+            if config.debug.print_events {
                 info!("glutin event: {:?}", event);
             }
 
@@ -424,9 +459,9 @@ impl<'a, N: Notify> Processor<'a, N> {
             let mut display_update_pending = DisplayUpdate::default();
             
             let context = ActionContext {
-                multi_window_command_queue: self.multi_window_command_queue,
+                multi_window_command_queue,
                 terminal: &mut terminal,
-                notifier: &mut self.notifier,
+                notifier,
                 mouse: &mut self.mouse,
                 size_info: &mut self.display.size_info,
                 received_count: &mut self.received_count,
@@ -436,7 +471,7 @@ impl<'a, N: Notify> Processor<'a, N> {
                 display_update_pending: &mut display_update_pending,
                 window: &mut self.display.window,
                 font_size: &mut self.font_size,
-                config: &mut self.config,
+                config,
             };
             let mut processor =
                 input::Processor::new(context, &self.display.urls, &self.display.highlighted_url);
@@ -449,9 +484,9 @@ impl<'a, N: Notify> Processor<'a, N> {
             if !display_update_pending.is_empty() {
                 self.display.handle_update(
                     &mut terminal,
-                    self.pty_resize_handle.as_mut(),
+                    self.pty_resize_handle.lock().as_mut(),
                     &self.message_buffer,
-                    &self.config,
+                    &config,
                     display_update_pending,
                 );
             }
@@ -468,7 +503,7 @@ impl<'a, N: Notify> Processor<'a, N> {
                 self.display.draw(
                     terminal,
                     &self.message_buffer,
-                    &self.config,
+                    &config,
                     &self.mouse,
                     self.modifiers,
                 );
@@ -479,7 +514,7 @@ impl<'a, N: Notify> Processor<'a, N> {
     /// Handle events from glutin
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T>(
+    fn handle_event<T, N: Notify>(
         event: GlutinEvent<Event>,
         processor: &mut input::Processor<T, ActionContext<N, T>>,
     ) where
@@ -671,8 +706,8 @@ impl<'a, N: Notify> Processor<'a, N> {
     }
 
     // Write the ref test results to the disk
-    pub fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
-        if !self.config.debug.ref_test {
+    pub fn write_ref_test_results<T>(&self, terminal: &Term<T>, config: &Config) {
+        if !config.debug.ref_test {
             return;
         }
 
@@ -687,7 +722,7 @@ impl<'a, N: Notify> Processor<'a, N> {
 
         let serialized_config = format!("{{\"history_size\":{}}}", grid.history_size());
 
-        File::create("./grid.json")
+        File::create("./grid.json") 
             .and_then(|mut f| f.write_all(serialized_grid.as_bytes()))
             .expect("write grid.json");
 

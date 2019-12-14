@@ -32,11 +32,10 @@ impl MultiWindowProcessor {
     ) -> Result<(), DisplayError> {
         let mut event_queue = Vec::new();
         let (multi_window_tx, multi_window_rx) = channel::channel(); 
-        let message_buffer = Arc::new(FairMutex::new(MessageBuffer::new()));
 
         let mut window_context_tracker = WindowContextTracker::new();
         window_context_tracker.initialize(
-            &config, 
+            &mut config, 
             &window_event_loop, 
             &event_proxy, 
             multi_window_tx.clone()
@@ -44,9 +43,6 @@ impl MultiWindowProcessor {
 
         // Run the process event loop
         window_event_loop.run_return(move |event, event_loop, mut control_flow| {
-            // Command queue for the multi-window commands such as create_new_window, etc.
-            let mut multi_window_queue = MultiWindowCommandQueue::default();
-
             // Activation, Deactivation and closing of windows
             if self.handle_multi_window_events(
                 event.clone(),
@@ -74,22 +70,52 @@ impl MultiWindowProcessor {
                 return;
             }
         
-            // Handle input and drawing of the current display
-            let mut window_processor = WindowProcessor {
-                active_context: &mut window_context_tracker.get_active_window_context(),
-                config: &mut config,
-                event_loop: &event_loop,
-                event_proxy: &event_proxy,
-                event_queue: &mut event_queue,
-                message_buffer_arc: message_buffer.clone(),
-                event: event.clone(),
-                control_flow: &mut control_flow,
-                context_tracker: &mut window_context_tracker,
-                multi_window_tx: &multi_window_tx,
-                multi_window_queue: &mut multi_window_queue,
+            let active_ctx = window_context_tracker.get_active_window_context();
+            let active_tab = active_ctx.get_active_tab();
+            if active_tab.is_none() {
+                self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
+               return;
             };
 
-            window_processor.run();
+            let mut multi_window_command_queue = {
+                let mut command_queue = MultiWindowCommandQueue::default();
+                let mut processor = active_ctx.processor.lock();
+                let active_tab = active_tab.unwrap();
+                let mut notifier = Notifier(active_tab.loop_tx.clone());
+        
+                processor.make_current();
+                
+                processor.run_iteration(
+                    &mut notifier,
+                    &mut event_queue,
+                    event,
+                    &mut control_flow,
+                    active_tab.terminal,
+                    &mut config,
+                    &mut command_queue,
+                );
+
+                command_queue
+            };
+
+
+            // let active_ctx = window_context_tracker.get_active_window_context();
+            match multi_window_command_queue.run_user_input_commands(
+                &mut window_context_tracker,
+                &active_ctx,
+                &mut config,
+                &event_loop,
+                &event_proxy,
+                multi_window_tx.clone(),
+            ) {
+                Ok(_) => {}
+                Err(_err) => {
+                    // TODO log error
+                }
+            };
+
+            // Run the the command queue
+            // 
 
             // Handle windows that are visible but not active
             self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
@@ -105,11 +131,18 @@ impl MultiWindowProcessor {
     ) -> Option<bool> {
         match receiver.try_recv() {
             Ok(result) => {
-                let ctx = context_tracker.get_context(result.window_id?)?;
+                let window_id = result.window_id?;
+                let ctx = context_tracker.get_context(window_id)?;
+
                 if result.wrapped_event == Event::Exit {
                     let tab_id = result.tab_id;
                     let mut tab_collection = ctx.term_tab_collection.lock();
                     tab_collection.close_tab(tab_id);
+
+                    if tab_collection.is_empty() {
+                        context_tracker.close_window(window_id);
+                    }
+
                     return None;
                 }
                 
@@ -185,97 +218,11 @@ impl MultiWindowProcessor {
             // TODO check if the window related to the context is maximized
            if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
                let tab = inactive_ctx.get_active_tab().unwrap();
-               let mut terminal = tab.terminal.lock();
-
-               if terminal.dirty {   
-                   terminal.dirty = false;
-
-                   let mut display = inactive_ctx.display.lock();
-           
-                   let mouse = Default::default();
-                   let modifiers = Default::default();
-                   let message_buffer = MessageBuffer::new();
-
-                   display.make_current();
-                   
-                   // Redraw screen
-                   display.draw(
-                       terminal,
-                       &message_buffer,
-                       &config,
-                       &mouse,
-                       modifiers,
-                   ); 
+               if tab.terminal.lock().dirty {   
+                   tab.terminal.lock().dirty = false;
+                   inactive_ctx.processor.lock().redraw(tab.terminal.clone(), config);
                }
            }
         }
-    }
-}
-
-struct WindowProcessor<'a> {
-    active_context: &'a mut WindowContext,
-    config: &'a mut Config,
-    event_loop: &'a EventLoopWindowTarget<Event>,
-    event_proxy: &'a EventProxy,
-    event_queue: &'a mut Vec<GlutinEvent<Event>>,
-    message_buffer_arc: Arc<FairMutex<MessageBuffer>>,
-    event: GlutinEvent<Event>,
-    control_flow: &'a mut ControlFlow,
-    context_tracker: &'a mut WindowContextTracker,
-    multi_window_tx: &'a Sender<MultiWindowEvent>,
-    multi_window_queue: &'a mut MultiWindowCommandQueue,
-}
-
-impl<'a> WindowProcessor<'a> {
-    fn run(&mut self) {
-        self.run_processor();
-        self.run_multi_window_input_commands();
-    }
-
-    fn run_processor(&mut self) {
-        let mut display = self.active_context.display.lock();
-        let active_tab = self.active_context.get_active_tab();
-
-        if active_tab.is_none() { return; }
-
-        let active_tab = active_tab.unwrap();
-        let notifier = Notifier(active_tab.loop_tx.clone());
-        let mut pty_resize_handle = active_tab.resize_handle.lock();
-        let mut message_buffer = self.message_buffer_arc.lock();
-        let term_arc = active_tab.terminal;
-        
-        display.make_current();
-
-        let mut processor = Processor::new(
-            self.multi_window_queue,
-            notifier, 
-            &mut pty_resize_handle, 
-            &mut message_buffer, 
-            self.config,
-            &mut display,            
-        );
-
-        processor.run_iteration(
-            self.event_queue,
-            self.event.clone(),
-            self.control_flow,
-            term_arc,
-        );
-    }
-
-    fn run_multi_window_input_commands(&mut self) {
-        match self.multi_window_queue.run_user_input_commands(
-            self.context_tracker,
-            &self.active_context,
-            self.config,
-            self.event_loop,
-            self.event_proxy,
-            self.multi_window_tx.clone(),
-        ) {
-            Ok(_) => {}
-            Err(_err) => {
-                // TODO log error
-            }
-        };
     }
 }

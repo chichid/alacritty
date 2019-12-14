@@ -1,4 +1,3 @@
-use crate::multi_window::term_tab::MultiWindowEvent;
 use mio_extras::channel::Sender;
 use std::collections::hash_map::Values;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
@@ -11,13 +10,18 @@ use glutin::window::WindowId;
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
+use alacritty_terminal::event_loop::Notifier;
+use alacritty_terminal::message_bar::MessageBuffer;
 
 use crate::config::Config;
 use crate::display::Display;
 use crate::display::Error;
 use crate::event::EventProxy;
+use crate::event::Processor;
+use crate::multi_window::command_queue::MultiWindowCommandQueue;
 use crate::multi_window::term_tab::TermTab;
 use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::term_tab::MultiWindowEvent;
 
 pub struct WindowContextTracker {
     active_window_id: Option<WindowId>,
@@ -25,14 +29,14 @@ pub struct WindowContextTracker {
     estimated_dpr: f64,
 }
 
-impl WindowContextTracker {
+impl<'a> WindowContextTracker {
     pub fn new() -> WindowContextTracker {
         WindowContextTracker { active_window_id: None, estimated_dpr: 0.0, map: HashMap::new() }
     }
 
     pub fn initialize(
         &mut self,
-        config: &Config,
+        config: &'a mut Config,
         window_event_loop: &GlutinEventLoop<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
@@ -81,7 +85,6 @@ impl WindowContextTracker {
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
         self.active_window_id = Some(window_id);
-        self.get_active_window_context().display.lock().request_resize();
     }
 
     pub(super) fn deactivate_window(&mut self, window_id: WindowId) {
@@ -100,14 +103,13 @@ impl WindowContextTracker {
         }
 
         let (_, window_ctx) = self.map.remove_entry(&window_id).unwrap();
-        let display_arc = window_ctx.display.clone();
-        let display = display_arc.lock();
-        display.window.close();
+        let processor = window_ctx.processor.lock();
+        processor.close_window();
     }
 
     pub(super) fn create_window_context(
         &mut self,
-        config: &Config,
+        config: &'a mut Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
@@ -132,14 +134,14 @@ impl WindowContextTracker {
 #[derive(Clone)]
 pub struct WindowContext {
     pub window_id: WindowId,
-    pub display: Arc<FairMutex<Display>>,
+    pub processor: Arc<FairMutex<Processor>>,
     pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
 }
 
 impl WindowContext {
     fn new(
         estimated_dpr: f64,
-        config: &Config,
+        config: &mut Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
@@ -165,9 +167,20 @@ impl WindowContext {
         // Sync Size of the terminal and display
         display.request_resize();
 
+        // Create the input processor for the window
+        let message_buffer = MessageBuffer::default();
+        let pty_resize_handle = active_tab.resize_handle;
+
+        let processor = Arc::new(FairMutex::new(Processor::new(
+            config.font.size,
+            pty_resize_handle, 
+            message_buffer, 
+            display,         
+        )));
+
         Ok(WindowContext {
-            window_id: display.window.window_id(),
-            display: Arc::new(FairMutex::new(display)),
+            window_id,
+            processor,
             term_tab_collection: Arc::new(FairMutex::new(term_tab_collection)),
         })
     }
