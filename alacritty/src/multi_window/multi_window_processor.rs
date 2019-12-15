@@ -52,6 +52,7 @@ impl MultiWindowProcessor {
                 &mut control_flow,
                 &mut event_queue,
                 &mut window_context_tracker,
+                &mut config,
                 &mut schedule_window_activation,
             ) { return; }
 
@@ -118,9 +119,6 @@ impl MultiWindowProcessor {
                 }
             };
 
-            // Run the the command queue
-            // 
-
             // Handle windows that are visible but not active
             self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
         });
@@ -140,10 +138,14 @@ impl MultiWindowProcessor {
 
                 if result.wrapped_event == Event::Exit {
                     let tab_id = result.tab_id;
-                    let mut tab_collection = ctx.term_tab_collection.lock();
-                    tab_collection.close_tab(tab_id);
-
-                    if tab_collection.is_empty() {
+                    
+                    let should_exit = {
+                        let mut tab_collection = ctx.term_tab_collection.lock();
+                        tab_collection.close_tab(tab_id);
+                        tab_collection.is_empty()
+                    };
+                    
+                    if should_exit {
                         context_tracker.close_window(window_id);
                     }
 
@@ -172,6 +174,7 @@ impl MultiWindowProcessor {
         control_flow: &mut ControlFlow,
         event_queue: &mut Vec<GlutinEvent<Event>>,
         context_tracker: &mut WindowContextTracker,
+        config: &mut Config,
         schedule_window_activation: &mut Option<WindowId>,
     ) -> bool {
         
@@ -195,6 +198,7 @@ impl MultiWindowProcessor {
                             // Do not activate the window right away, this causes weird selection behaviour
                             // wait until the mouse_input is received on the next iteration or 
                             *schedule_window_activation = Some(window_id);
+                            *control_flow = ControlFlow::Poll;
                             return true;
                         } else {
                             context_tracker.deactivate_window(window_id);
@@ -213,8 +217,10 @@ impl MultiWindowProcessor {
 
         if *schedule_window_activation != None {
             context_tracker.activate_window(schedule_window_activation.unwrap());
+
             *schedule_window_activation = None;
-            *control_flow = ControlFlow::Poll;
+            *control_flow = ControlFlow::Wait;
+            
             return true;
         }
         

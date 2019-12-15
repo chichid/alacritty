@@ -378,8 +378,23 @@ impl Processor {
         self.display.make_current();
     }
 
+    pub fn activate<T>(&mut self, terminal: &mut Term<T>, config: &Config) {
+        let SizeInfo {dpr, ..} = self.get_size_info();
+        let lsize = self.display.window.inner_size();
+        let mut display_update = DisplayUpdate::default();
+        display_update.dimensions = Some(lsize.to_physical(dpr));
+
+        self.display.handle_update(
+            terminal,
+            self.pty_resize_handle.lock().as_mut(),
+            &self.message_buffer,
+            config,
+            display_update,
+        );
+    }
+
     pub fn redraw<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, config: &Config) {
-        self.display.make_current();
+        self.make_current();
 
         self.display.draw(
             terminal.lock(),
@@ -569,9 +584,11 @@ impl Processor {
                         processor.ctx.terminal.exit()
                     },
                     Resized(lsize) => {
-                        let psize = lsize.to_physical(processor.ctx.size_info.dpr);
-                        processor.ctx.display_update_pending.dimensions = Some(psize);
-                        processor.ctx.terminal.dirty = true;
+                        if lsize.height > 0.0 && lsize.width > 0.0 {
+                            let psize = lsize.to_physical(processor.ctx.size_info.dpr);
+                            processor.ctx.display_update_pending.dimensions = Some(psize);
+                            processor.ctx.terminal.dirty = true;
+                        }
                     },
                     KeyboardInput { input, .. } => {
                         processor.key_input(input);

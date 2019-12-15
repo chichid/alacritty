@@ -10,7 +10,6 @@ use glutin::window::WindowId;
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::event_loop::Notifier;
 use alacritty_terminal::message_bar::MessageBuffer;
 
 use crate::config::Config;
@@ -18,7 +17,7 @@ use crate::display::Display;
 use crate::display::Error;
 use crate::event::EventProxy;
 use crate::event::Processor;
-use crate::multi_window::command_queue::MultiWindowCommandQueue;
+
 use crate::multi_window::term_tab::TermTab;
 use crate::multi_window::term_tab_collection::TermTabCollection;
 use crate::multi_window::term_tab::MultiWindowEvent;
@@ -146,6 +145,9 @@ impl WindowContext {
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
     ) -> Result<WindowContext, Error> {
+        // Create the input processor for the window
+        let message_buffer = MessageBuffer::default();
+
         // Create a terminal tab collection
         //
         // The tab collection is a collection of TerminalTab that holds the state of all tabs
@@ -155,7 +157,7 @@ impl WindowContext {
         // Create a display
         //
         // The display manages a window and can draw the terminal.
-        let mut display = Display::new(config, estimated_dpr, window_event_loop)?;
+        let display = Display::new(config, estimated_dpr, window_event_loop)?;
         let window_id = display.window.window_id();
         active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
@@ -164,23 +166,20 @@ impl WindowContext {
         #[cfg(target_os = "macos")]
         WindowContext::handle_macos_window_cascading();
 
-        // Sync Size of the terminal and display
-        display.request_resize();
-
-        // Create the input processor for the window
-        let message_buffer = MessageBuffer::default();
-        let pty_resize_handle = active_tab.resize_handle;
-
-        let processor = Arc::new(FairMutex::new(Processor::new(
+        // Create the processor
+        let mut processor = Processor::new(
             config.font.size,
-            pty_resize_handle, 
+            active_tab.resize_handle.clone(), 
             message_buffer, 
             display,         
-        )));
+        );
+
+        // Sync the size of the display and the terminal
+        processor.activate(&mut active_tab.terminal.lock(), config);
 
         Ok(WindowContext {
             window_id,
-            processor,
+            processor: Arc::new(FairMutex::new(processor)),
             term_tab_collection: Arc::new(FairMutex::new(term_tab_collection)),
         })
     }
