@@ -1,3 +1,4 @@
+use glutin::window::WindowId;
 use crate::multi_window::window_context_tracker::WindowContext;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::event_loop::Notifier;
@@ -41,6 +42,8 @@ impl MultiWindowProcessor {
             multi_window_tx.clone()
         )?;
 
+        let mut schedule_window_activation: Option<WindowId> = None;
+
         // Run the process event loop
         window_event_loop.run_return(move |event, event_loop, mut control_flow| {
             // Activation, Deactivation and closing of windows
@@ -49,6 +52,7 @@ impl MultiWindowProcessor {
                 &mut control_flow,
                 &mut event_queue,
                 &mut window_context_tracker,
+                &mut schedule_window_activation,
             ) { return; }
 
             // PTY Detach for all windows and dirty state for inactive terminals
@@ -168,6 +172,7 @@ impl MultiWindowProcessor {
         control_flow: &mut ControlFlow,
         event_queue: &mut Vec<GlutinEvent<Event>>,
         context_tracker: &mut WindowContextTracker,
+        schedule_window_activation: &mut Option<WindowId>,
     ) -> bool {
         
         match event {
@@ -187,19 +192,30 @@ impl MultiWindowProcessor {
                 match event {
                     Focused(is_focused) => {
                         if is_focused {
-                            context_tracker.activate_window(window_id);
+                            // Do not activate the window right away, this causes weird selection behaviour
+                            // wait until the mouse_input is received on the next iteration or 
+                            *schedule_window_activation = Some(window_id);
+                            return true;
                         } else {
                             context_tracker.deactivate_window(window_id);
                         }
                     }
                     CloseRequested => {
                         context_tracker.close_window(window_id);
+                    },
+                    _ => {
                     }
-                    _ => {}
                 }
             },
 
             _ => {} 
+        }
+
+        if *schedule_window_activation != None {
+            context_tracker.activate_window(schedule_window_activation.unwrap());
+            *schedule_window_activation = None;
+            *control_flow = ControlFlow::Poll;
+            return true;
         }
         
         false
