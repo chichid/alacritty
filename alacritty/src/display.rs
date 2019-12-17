@@ -287,14 +287,6 @@ impl Display {
 
     pub fn make_current(&mut self) {
         self.window.make_current();
-        self.renderer.resize(&self.size_info);
-    }
-
-    pub fn request_resize(&mut self) {
-        // Sync Size of the terminal and display
-        let inner_size = self.window.inner_size();
-        self.window.set_inner_size(glutin::dpi::LogicalSize::new(inner_size.width - 1.0, inner_size.height));
-        self.window.set_inner_size(inner_size);
     }
 
     /// Process update events
@@ -380,6 +372,7 @@ impl Display {
 
         // Update IME position
         #[cfg(not(windows))]
+        self.renderer.resize(&size_info);
         self.window.update_ime_position(&terminal, &self.size_info);
 
         // Drop terminal as early as possible to free lock
