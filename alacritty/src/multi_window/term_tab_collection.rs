@@ -41,6 +41,7 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
             cell_height: 1.0,
             padding_x: 0.0,
             padding_y: 0.0,
+            padding_top: 0.0,
             dpr: 1.0,
         };
 

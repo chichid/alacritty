@@ -775,6 +775,9 @@ pub struct SizeInfo {
     /// Horizontal window padding
     pub padding_y: f32,
 
+    /// Top Padding
+    pub padding_top: f32,
+
     /// DPI factor of the current window
     #[serde(default)]
     pub dpr: f64,
@@ -798,12 +801,12 @@ impl SizeInfo {
         x < (self.width - self.padding_x) as usize
             && x >= self.padding_x as usize
             && y < (self.height - self.padding_y) as usize
-            && y >= self.padding_y as usize
+            && y >= (self.padding_y + self.padding_top) as usize
     }
 
     pub fn pixels_to_coords(&self, x: usize, y: usize) -> Point {
         let col = Column(x.saturating_sub(self.padding_x as usize) / (self.cell_width as usize));
-        let line = Line(y.saturating_sub(self.padding_y as usize) / (self.cell_height as usize));
+        let line = Line(y.saturating_sub(self.padding_y as usize + self.padding_top as usize) / (self.cell_height as usize));
 
         Point {
             line: min(line, Line(self.lines().saturating_sub(1))),

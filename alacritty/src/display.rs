@@ -191,6 +191,7 @@ impl Display {
             cell_height,
             padding_x,
             padding_y,
+            padding_top: 55.0,
         };
 
         // Update OpenGL projection
@@ -334,6 +335,8 @@ impl Display {
             pty_size.height -= pty_size.cell_height * lines as f32;
         }
 
+        pty_size.height -= self.size_info.padding_top;
+
         // Resize PTY
         pty_resize_handle.on_resize(&pty_size);
 
@@ -371,10 +374,11 @@ impl Display {
         let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE);
 
         // Update IME position
-        #[cfg(not(windows))]
-        self.renderer.resize(&size_info);
-        self.window.update_ime_position(&terminal, &self.size_info);
-
+        #[cfg(not(windows))] {
+            self.renderer.resize(&size_info);
+            self.window.update_ime_position(&terminal, &self.size_info);
+        }
+        
         // Drop terminal as early as possible to free lock
         drop(terminal);
 
