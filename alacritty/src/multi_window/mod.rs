@@ -4,5 +4,5 @@ pub mod multi_window_processor;
 pub mod term_tab;
 pub mod window_context_tracker;
 mod term_tab_collection;
-mod tab_view;
+mod platform;
 
