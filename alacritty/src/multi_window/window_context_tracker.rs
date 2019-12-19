@@ -1,10 +1,11 @@
-use mio_extras::channel::Sender;
 use std::collections::hash_map::Values;
-use glutin::event_loop::EventLoop as GlutinEventLoop;
-use log::info;
 use std::collections::HashMap;
 use std::sync::Arc;
+use log::info;
 
+use mio_extras::channel::Sender;
+
+use glutin::event_loop::EventLoop as GlutinEventLoop;
 use glutin::event_loop::EventLoopWindowTarget;
 use glutin::window::WindowId;
 
@@ -18,9 +19,10 @@ use crate::display::Error;
 use crate::event::EventProxy;
 use crate::event::Processor;
 
-use crate::multi_window::term_tab::TermTab;
-use crate::multi_window::term_tab_collection::TermTabCollection;
 use crate::multi_window::term_tab::MultiWindowEvent;
+use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::term_tab::TermTab;
+use crate::multi_window::tab_view::TabView;
 
 pub struct WindowContextTracker {
     active_window_id: Option<WindowId>,
@@ -135,6 +137,7 @@ pub struct WindowContext {
     pub window_id: WindowId,
     pub processor: Arc<FairMutex<Processor>>,
     pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
+    tab_view: Arc<FairMutex<TabView>>,
 }
 
 impl WindowContext {
@@ -162,6 +165,9 @@ impl WindowContext {
         active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
 
+        // Create the tab view
+        let tab_view = TabView::new(window_id);
+
         // Handle Cascading on mac os 
         #[cfg(target_os = "macos")]
         WindowContext::handle_macos_window_cascading();
@@ -179,6 +185,7 @@ impl WindowContext {
 
         Ok(WindowContext {
             window_id,
+            tab_view: Arc::new(FairMutex::new(tab_view)),
             processor: Arc::new(FairMutex::new(processor)),
             term_tab_collection: Arc::new(FairMutex::new(term_tab_collection)),
         })
@@ -187,6 +194,22 @@ impl WindowContext {
     pub fn get_active_tab(&self) -> Option<TermTab<EventProxy>> {
         let tab_collection = self.term_tab_collection.lock();
         tab_collection.get_active_tab()
+    }
+
+    fn create_tab_view(window: WindowId) {
+        use objc::{ msg_send, sel, sel_impl };
+        use cocoa::{ base::{id, nil}, foundation::{NSPoint}};
+
+        unsafe {
+            let shared_application = cocoa::appkit::NSApplication::sharedApplication(nil);
+            let windows: id = msg_send![shared_application,  windows];
+
+            let main_window: id = msg_send![shared_application,  mainWindow];
+            let ns_point: NSPoint = msg_send![main_window, cascadeTopLeftFromPoint: NSPoint {x: 0.0, y: 0.0}];
+
+            let window: id = msg_send![windows, lastObject];
+            let _result: id = msg_send![window, cascadeTopLeftFromPoint: ns_point];   
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -204,6 +227,5 @@ impl WindowContext {
             let window: id = msg_send![windows, lastObject];
             let _result: id = msg_send![window, cascadeTopLeftFromPoint: ns_point];   
         }
-
     }
 }
