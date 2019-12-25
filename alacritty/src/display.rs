@@ -477,6 +477,8 @@ impl Display {
             self.renderer.draw_rects(&size_info, rects);
         }
 
+        render_tabs(&mut self.renderer, &config, &size_info, glyph_cache);
+
         // Draw render timer
         if config.render_timer() {
             let timing = format!("{:.3} usec", self.meter.average());
@@ -487,6 +489,70 @@ impl Display {
         }
 
         self.window.swap_buffers();
+    }   
+}
+
+fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInfo, glyph_cache: &mut GlyphCache) {
+    let mut rects = Vec::new();
+    let tab_count = 4;
+    let tab_width = size_info.width as f32 / tab_count as f32;
+    let tab_height = 32.;
+    let tab_color = Rgb { r: 150, g: 150, b: 150 };
+    let border_color = Rgb { r: 70, g: 70, b: 70 };
+    let border_width = 0.7;
+    let active_tab = 2;
+    let active_tab_brightness_factor = 1.5;
+    let hovered_tab = 1;
+    let hovered_tab_brightness_factor = 1.3;
+    let text_color = Rgb { r: 0, g: 0, b: 0};
+    
+    // Tab background
+    for i in 0..tab_count {
+        let tab_x = (i as f32) * tab_width;
+
+        let brightness_factor = if i == active_tab {
+            active_tab_brightness_factor 
+        } else if i == hovered_tab { 
+            hovered_tab_brightness_factor
+        } else {
+            1.0
+        }; 
+
+        // Border
+        rects.push(RenderRect::new(
+            tab_x,
+            0.,
+            tab_width,
+            tab_height,
+            border_color * brightness_factor,
+            1.,
+        ));
+       
+        // Content
+        rects.push(RenderRect::new(
+            tab_x + border_width,
+            0.,
+            tab_width - 2.0 * border_width,
+            tab_height - 2.0 * border_width,
+            tab_color * brightness_factor,
+            1.,
+        ));
+    }
+
+    renderer.draw_rects(&size_info, rects);
+
+    // Titles
+    for i in 0..tab_count {
+        renderer.with_api(&config, &size_info, |mut api| {
+            let tab_title = format!("Tab {}", i);
+
+            api.render_string(
+                &tab_title,
+                Line(0),
+                glyph_cache,
+                None,
+            );
+        });
     }
 }
 
