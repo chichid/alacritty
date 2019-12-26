@@ -496,7 +496,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     let mut rects = Vec::new();
     let tab_count = 4;
     let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = 32.;
+    let tab_height = (32. * size_info.dpr) as f32;
     let tab_color = Rgb { r: 150, g: 150, b: 150 };
     let border_color = Rgb { r: 70, g: 70, b: 70 };
     let border_width = 0.7;
@@ -504,8 +504,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     let active_tab_brightness_factor = 1.5;
     let hovered_tab = 1;
     let hovered_tab_brightness_factor = 1.3;
-    let text_color = Rgb { r: 0, g: 0, b: 0};
-    
+
     // Tab background
     for i in 0..tab_count {
         let tab_x = (i as f32) * tab_width;
