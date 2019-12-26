@@ -493,19 +493,21 @@ impl Display {
 }
 
 fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInfo, glyph_cache: &mut GlyphCache) {
-    let mut rects = Vec::new();
     let tab_count = 4;
     let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = (27. * size_info.dpr) as f32;
+    let tab_height = (26. * size_info.dpr) as f32;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
     let border_color = Rgb { r: 150, g: 150, b: 150 };
     let border_width = 0.7;
     let active_tab = 2;
     let active_tab_brightness_factor = 1.1;
     let hovered_tab = 1;
-    let hovered_tab_brightness_factor = 0.95;
+    let hovered_tab_brightness_factor = 0.9;
+    let tab_font_size = 11.;
 
     // Tab background
+    let mut rects = Vec::new();
+
     for i in 0..tab_count {
         let tab_x = (i as f32) * tab_width;
 
@@ -541,12 +543,28 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     renderer.draw_rects(&size_info, rects);
 
     // Titles
-    for i in 0..tab_count {
-        let mut sm = *size_info;
-        
-        renderer.with_api(&config, &sm, |mut api| {
-            let tab_title = format!("Tab {}", i);
+    renderer.with_loader(|mut api| {
+        let mut f = config.font.clone();
+        f.size = font::Size::new(tab_font_size);        
+        let _ = glyph_cache.update_font_size(f, size_info.dpr, &mut api);
+    });
 
+    let mut rects = Vec::new();
+
+    for i in 0..tab_count {
+        let tab_title = format!("~/Github/fish - Tab {}", i);
+        let text_width = tab_title.len() as f32 * tab_font_size;
+        let text_height = tab_font_size * size_info.dpr as f32;
+        let mut sm = *size_info;
+
+        sm.padding_x = (i as f32) * tab_width + tab_width / 2. - text_width / 2.;
+        sm.padding_y = tab_height / 4. - text_height / 4.;
+        sm.width = size_info.width + sm.padding_x;
+        sm.cell_width = tab_font_size as f32 + 1.;
+        
+        renderer.resize(&sm);
+
+        renderer.with_api(&config, &sm, |mut api| {
             api.render_string(
                 &tab_title,
                 Line(0),
@@ -554,7 +572,27 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
                 None,
             );
         });
+
+        // Content
+        if i != active_tab {
+            let tab_x = (i as f32) * tab_width;
+
+            rects.push(RenderRect::new(
+                tab_x,
+                0.,
+                tab_width,
+                tab_height,
+                tab_color,
+                0.35,
+            ));
+        }
     }
+
+    renderer.draw_rects(&size_info, rects);
+
+    renderer.with_loader(|mut api| {
+        let _ = glyph_cache.update_font_size(config.font.clone(), size_info.dpr, &mut api);
+    });
 }
 
 /// Calculate padding to spread it evenly around the terminal content
