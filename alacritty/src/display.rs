@@ -497,14 +497,14 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     let hovered_tab = 1;
     let tab_count = 4;
     let dpr = size_info.dpr as f32;
-
-    let tab_font_size = 11.;
+    
+    let tab_font_size_factor = 0.8;
     let tab_width = size_info.width as f32 / tab_count as f32;
     let tab_height = 26. * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
 
     let border_color = Rgb { r: 150, g: 150, b: 150 };
-    let border_width = 0.7;
+    let border_width = 0.7 * dpr;
 
     let active_tab_brightness_factor = 1.1;
     let hovered_tab_brightness_factor = 0.9;
@@ -549,25 +549,38 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     renderer.draw_rects(&size_info, rects);
 
     // Titles
+    let mut average_advance = 0.;
+    let mut line_height = 0.;
+    let offset_x = 1;
+
     renderer.with_loader(|mut api| {
         let mut f = config.font.clone();
-        f.size = font::Size::new(tab_font_size);
-        f.offset.x = 0;   
-        let _ = glyph_cache.update_font_size(f, size_info.dpr, &mut api);
+        f.size = font::Size::new(f.size.as_f32_pts() * tab_font_size_factor);
+        f.offset.x = offset_x;
+        f.offset.y = 0;
+
+        let _ = glyph_cache.update_font_size(f.clone(), size_info.dpr, &mut api);
+        let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
+
+        average_advance = metrics.average_advance;
+        line_height = metrics.line_height;
     });
 
     let mut rects = Vec::new();
 
     for i in 0..tab_count {
+        let tab_x = (i as f32) * tab_width;
         let tab_title = format!("~/Github/fish - Tab {}", i);
-        let text_width = tab_title.len() as f32 * tab_font_size;
-        let text_height = tab_font_size * size_info.dpr as f32;
-        let mut sm = *size_info;
+        let cell_width = offset_x as f32 + average_advance.floor().max(1.) as f32;
 
+        let text_width = tab_title.len() as f32 * cell_width;
+        let text_height = line_height.floor().max(1.) as f32;
+
+        let mut sm = *size_info;
         sm.padding_x = (i as f32) * tab_width + tab_width / 2. - text_width / 2.;
         sm.padding_y = tab_height / 4. - text_height / 4.;
         sm.width = size_info.width + sm.padding_x;
-        sm.cell_width = tab_font_size as f32 + 1.;
+        sm.cell_width = cell_width;
         
         renderer.resize(&sm);
 
@@ -582,11 +595,11 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
 
         // Close Icon
         if i == hovered_tab {
-            sm.padding_x = (i as f32) * tab_width + close_icon_padding;
+            sm.padding_x = tab_x + close_icon_padding;
             renderer.resize(&sm);
             renderer.with_api(&config, &sm, |mut api| {
                 api.render_string(
-                    "⨉",
+                    "x",
                     Line(0),
                     glyph_cache,
                     None,
@@ -594,15 +607,13 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
             });
         }
 
-        // Content
+        // Inactive tabs mask
         if i != active_tab {
-            let tab_x = (i as f32) * tab_width;
-
             rects.push(RenderRect::new(
-                tab_x,
-                0.,
-                tab_width,
-                tab_height,
+                tab_x + border_width,
+                0. + border_width,
+                tab_width - 2. * border_width,
+                tab_height - 2. * border_width,
                 tab_color,
                 0.35,
             ));
