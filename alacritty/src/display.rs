@@ -493,19 +493,25 @@ impl Display {
 }
 
 fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInfo, glyph_cache: &mut GlyphCache) {
+    let active_tab = 2;
+    let hovered_tab = 1;
     let tab_count = 4;
+    let dpr = size_info.dpr as f32;
+
+    let tab_font_size = 11.;
     let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = (26. * size_info.dpr) as f32;
+    let tab_height = 26. * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
+
     let border_color = Rgb { r: 150, g: 150, b: 150 };
     let border_width = 0.7;
-    let active_tab = 2;
-    let active_tab_brightness_factor = 1.1;
-    let hovered_tab = 1;
-    let hovered_tab_brightness_factor = 0.9;
-    let tab_font_size = 11.;
 
-    // Tab background
+    let active_tab_brightness_factor = 1.1;
+    let hovered_tab_brightness_factor = 0.9;
+    
+    let close_icon_padding = 10.0 * dpr;
+
+    // Tabs background
     let mut rects = Vec::new();
 
     for i in 0..tab_count {
@@ -545,7 +551,8 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     // Titles
     renderer.with_loader(|mut api| {
         let mut f = config.font.clone();
-        f.size = font::Size::new(tab_font_size);        
+        f.size = font::Size::new(tab_font_size);
+        f.offset.x = 0;   
         let _ = glyph_cache.update_font_size(f, size_info.dpr, &mut api);
     });
 
@@ -572,6 +579,20 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
                 None,
             );
         });
+
+        // Close Icon
+        if i == hovered_tab {
+            sm.padding_x = (i as f32) * tab_width + close_icon_padding;
+            renderer.resize(&sm);
+            renderer.with_api(&config, &sm, |mut api| {
+                api.render_string(
+                    "⨉",
+                    Line(0),
+                    glyph_cache,
+                    None,
+                );
+            });
+        }
 
         // Content
         if i != active_tab {
