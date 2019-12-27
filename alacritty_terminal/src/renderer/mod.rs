@@ -856,7 +856,7 @@ impl QuadRenderer {
         unsafe {
             gl::Viewport(
                 size.padding_x as i32,
-                size.padding_y as i32,
+                size.padding_y as i32 - size.padding_top as i32,
                 size.width as i32 - 2 * size.padding_x as i32,
                 size.height as i32 - 2 * size.padding_y as i32,
             );

@@ -92,7 +92,7 @@ impl RenderLine {
             y = max_y;
         }
 
-        RenderRect::new(start_x + size.padding_x, y + size.padding_y, width, height, color, 1.)
+        RenderRect::new(start_x + size.padding_x, y + size.padding_y + size.padding_top, width, height, color, 1.)
     }
 }
 

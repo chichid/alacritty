@@ -192,6 +192,7 @@ impl Display {
             cell_height,
             padding_x,
             padding_y,
+            padding_top: config.window.tab_bar_height as f32 * dpr as f32,
         };
 
         // Update OpenGL projection
@@ -234,7 +235,6 @@ impl Display {
         let (mut tab_bar_glyph_cache, _, _) = Self::new_glyph_cache(dpr, &mut tab_bar_renderer, config)?;
         tab_bar_renderer.with_loader(|mut api| {
             let mut font = config.font.clone();
-            // TODO config
             font.size = font::Size::new(font.size.as_f32_pts() * 0.8);
             let _ = tab_bar_glyph_cache.update_font_size(font, size_info.dpr, &mut api);
         });
@@ -299,7 +299,6 @@ impl Display {
 
     pub fn make_current(&mut self) {
         self.window.make_current();
-        self.renderer.resize(&self.size_info);
     }
 
     /// Process update events
@@ -347,6 +346,8 @@ impl Display {
             pty_size.height -= pty_size.cell_height * lines as f32;
         }
 
+        pty_size.height -= self.size_info.padding_top;
+
         // Resize PTY
         pty_resize_handle.on_resize(&pty_size);
 
@@ -384,8 +385,9 @@ impl Display {
         let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE);
 
         // Update IME position
-        #[cfg(not(windows))]
-        self.window.update_ime_position(&terminal, &self.size_info);
+        #[cfg(not(windows))] {
+            self.window.update_ime_position(&terminal, &self.size_info);
+        }
 
         // Drop terminal as early as possible to free lock
         drop(terminal);
@@ -397,8 +399,6 @@ impl Display {
         let mut lines = RenderLines::new();
         let mut urls = Urls::new();
 
-        let mut size_info = size_info.clone();
-        size_info.padding_y += config.window.tab_bar_height as f32 * size_info.dpr as f32;
         self.renderer.resize(&size_info);
         
         // Draw grid
@@ -561,7 +561,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     let mut f = config.font.clone();
     let offset_x = 1;
     f.offset.x = offset_x;
-    f.offset.y = 0;
+    f.offset.y = 10;
 
     let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
     let mut average_advance = metrics.average_advance;
@@ -578,7 +578,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
 
         let mut sm = *size_info;
         sm.padding_x = (i as f32) * tab_width + tab_width / 2. - text_width / 2.;
-        sm.padding_y = tab_height / 4. - text_height / 4.;
+        sm.padding_top = 0.0;
         sm.width = size_info.width + sm.padding_x;
         sm.cell_width = cell_width;
         
