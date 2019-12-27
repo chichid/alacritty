@@ -124,6 +124,7 @@ pub struct Display {
 
     renderer: QuadRenderer,
     glyph_cache: GlyphCache,
+    tab_bar_glyph_cache: GlyphCache,
     meter: Meter,
 }
 
@@ -228,10 +229,21 @@ impl Display {
             _ => (),
         }
 
+        // Create the tab bar glyph-cache
+        let mut tab_bar_renderer = QuadRenderer::new()?;
+        let (mut tab_bar_glyph_cache, _, _) = Self::new_glyph_cache(dpr, &mut tab_bar_renderer, config)?;
+        tab_bar_renderer.with_loader(|mut api| {
+            let mut font = config.font.clone();
+            // TODO config
+            font.size = font::Size::new(font.size.as_f32_pts() * 0.8);
+            let _ = tab_bar_glyph_cache.update_font_size(font, size_info.dpr, &mut api);
+        });
+
         Ok(Display {
             window,
             renderer,
             glyph_cache,
+            tab_bar_glyph_cache,
             meter: Meter::new(),
             size_info,
             urls: Urls::new(),
@@ -288,13 +300,6 @@ impl Display {
     pub fn make_current(&mut self) {
         self.window.make_current();
         self.renderer.resize(&self.size_info);
-    }
-
-    pub fn request_resize(&mut self) {
-        // Sync Size of the terminal and display
-        let inner_size = self.window.inner_size();
-        self.window.set_inner_size(glutin::dpi::LogicalSize::new(inner_size.width - 1.0, inner_size.height));
-        self.window.set_inner_size(inner_size);
     }
 
     /// Process update events
@@ -481,7 +486,7 @@ impl Display {
             self.renderer.draw_rects(&size_info, rects);
         }
 
-        render_tabs(&mut self.renderer, &config, &size_info, glyph_cache);
+        render_tabs(&mut self.renderer, &config, &size_info, &mut self.tab_bar_glyph_cache);
 
         // Draw render timer
         if config.render_timer() {
@@ -553,23 +558,14 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     renderer.draw_rects(&size_info, rects);
 
     // Titles
-    let mut average_advance = 0.;
-    let mut line_height = 0.;
+    let mut f = config.font.clone();
     let offset_x = 1;
+    f.offset.x = offset_x;
+    f.offset.y = 0;
 
-    renderer.with_loader(|mut api| {
-        let mut f = config.font.clone();
-        f.size = font::Size::new(f.size.as_f32_pts() * tab_font_size_factor);
-        f.offset.x = offset_x;
-        f.offset.y = 0;
-
-        let _ = glyph_cache.update_font_size(f.clone(), size_info.dpr, &mut api);
-        let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
-
-        average_advance = metrics.average_advance;
-        line_height = metrics.line_height;
-    });
-
+    let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
+    let mut average_advance = metrics.average_advance;
+    let mut line_height = metrics.line_height;
     let mut rects = Vec::new();
 
     for i in 0..tab_count {
@@ -625,10 +621,6 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     }
 
     renderer.draw_rects(&size_info, rects);
-
-    renderer.with_loader(|mut api| {
-        let _ = glyph_cache.update_font_size(config.font.clone(), size_info.dpr, &mut api);
-    });
 }
 
 /// Calculate padding to spread it evenly around the terminal content
