@@ -1,5 +1,9 @@
 use std::sync::Arc;
+
+use glutin::event::Event as GlutinEvent;
 use glutin::window::WindowId;
+
+use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
 
 use crate::multi_window::term_tab_collection::TermTabCollection;
@@ -19,44 +23,55 @@ pub struct TabBarState<T> {
 }
 
 impl<T> TabBarState<T> {
-  fn new(term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>) -> TabBarState<T> {
-    TabBarState {
-      current_dragging_tab: None,
-      current_drop_zone: None,
-      term_tab_collection,
+  pub(super) fn new(term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>) -> TabBarState<T> {
+    TabBarState { current_dragging_tab: None, current_drop_zone: None, term_tab_collection }
+  }
+}
+
+pub(super) struct TabBarProcessor<T> {
+  tab_bar_state: Arc<FairMutex<TabBarState<T>>>,
+}
+
+impl<T> TabBarProcessor<T> {
+  pub(super) fn new(tab_bar_state: Arc<FairMutex<TabBarState<T>>>) -> TabBarProcessor<T> {
+    TabBarProcessor { tab_bar_state }
+  }
+
+  pub(super) fn handle_event(&self, event: GlutinEvent<Event>) {
+    if let GlutinEvent::WindowEvent { event, window_id, .. } = event {
+        use glutin::event::WindowEvent::*;
+
+        match event {
+          MouseInput { state, button, .. } => {
+            println!("Mouse input {:?} {:?}", state, button);
+          }
+
+          CursorMoved { position: lpos, .. } => {
+            println!("Cursor moving {:?}", lpos);
+          }
+
+          CursorEntered { .. } => {
+            println!("Cursor Entered window {:?}", window_id);
+          }
+
+          CursorLeft { .. } => {
+            println!("Cursor Left Window {:?}", window_id);
+          }
+
+          _ => {}
+        }
     }
   }
-
 }
 
-pub struct TabBarProcessor<'a, T> {
-  tab_bar_state: &'a mut TabBarState<T>,
+pub struct TabBarRenderer<T> {
+  tab_bar_state: Arc<FairMutex<TabBarState<T>>>,
 }
 
-impl<'a, T> TabBarProcessor<'a, T> {
-  fn new(tab_bar_state: &'a mut TabBarState<T>) -> TabBarProcessor<'a, T> {
-    TabBarProcessor {
-      tab_bar_state
-    }
+impl<T> TabBarRenderer<T> {
+  pub fn new(tab_bar_state: Arc<FairMutex<TabBarState<T>>>) -> TabBarRenderer<T> {
+    TabBarRenderer { tab_bar_state }
   }
 
-  pub(super) fn handle_mouse_events(&self) {
-    // TODO Implement
-  }
-}
-
-pub struct TabBarRenderer<'a, T> {
-  tab_bar_state: &'a mut TabBarState<T>,
-}
-
-impl<'a, T> TabBarRenderer<'a, T> {
-  fn new(tab_bar_state: &'a mut TabBarState<T>) -> TabBarRenderer<'a, T> {
-    TabBarRenderer {
-      tab_bar_state
-    }
-  }
-
-  fn render_tabs(&self) {
-
-  }
+  fn render(&self, tab_bar_state: &mut TabBarState<T>) {}
 }

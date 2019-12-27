@@ -21,6 +21,7 @@ use crate::event::Processor;
 use crate::multi_window::term_tab::TermTab;
 use crate::multi_window::term_tab_collection::TermTabCollection;
 use crate::multi_window::term_tab::MultiWindowEvent;
+use crate::multi_window::tab_bar::{ TabBarState, TabBarProcessor, TabBarRenderer };
 
 pub struct WindowContextTracker {
     active_window_id: Option<WindowId>,
@@ -135,6 +136,8 @@ pub struct WindowContext {
     pub window_id: WindowId,
     pub processor: Arc<FairMutex<Processor>>,
     pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
+    pub tab_bar_renderer: Arc<TabBarRenderer<EventProxy>>,
+    pub(super) tab_bar_processor: Arc<FairMutex<TabBarProcessor<EventProxy>>>,
 }
 
 impl WindowContext {
@@ -153,7 +156,16 @@ impl WindowContext {
         // The tab collection is a collection of TerminalTab that holds the state of all tabs
         let mut term_tab_collection = TermTabCollection::new(event_proxy.clone());
         let mut active_tab = term_tab_collection.initialize(&config, dispatcher);
+        let term_tab_collection = Arc::new(FairMutex::new(term_tab_collection));
 
+        // Create the tab bar state
+        //
+        // Holds the state of the tab bar such as: drag & drop state, active terminal
+        let tab_bar_state = TabBarState::new(term_tab_collection.clone());
+        let tab_bar_state_arc = Arc::new(FairMutex::new(tab_bar_state));
+        let tab_bar_processsor = TabBarProcessor::new(tab_bar_state_arc.clone());
+        let tab_bar_renderer = TabBarRenderer::new(tab_bar_state_arc.clone());
+        
         // Create a display
         //
         // The display manages a window and can draw the terminal.
@@ -180,7 +192,9 @@ impl WindowContext {
         Ok(WindowContext {
             window_id,
             processor: Arc::new(FairMutex::new(processor)),
-            term_tab_collection: Arc::new(FairMutex::new(term_tab_collection)),
+            term_tab_collection,
+            tab_bar_processor: Arc::new(FairMutex::new(tab_bar_processsor)),
+            tab_bar_renderer: Arc::new(tab_bar_renderer),
         })
     }
 

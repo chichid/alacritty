@@ -1,22 +1,16 @@
 use glutin::window::WindowId;
-use crate::multi_window::window_context_tracker::WindowContext;
-use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::event_loop::Notifier;
-use std::sync::Arc;
-use mio_extras::channel::{self, Receiver, Sender};
+use mio_extras::channel::{self, Receiver};
 
 use glutin::event_loop::ControlFlow;
-use glutin::event_loop::EventLoopWindowTarget;
 use glutin::event::Event as GlutinEvent;
 use glutin::event_loop::EventLoop as GlutinEventLoop;
 use glutin::platform::desktop::EventLoopExtDesktop;
 use alacritty_terminal::event::Event;
-use alacritty_terminal::message_bar::MessageBuffer;
 
 use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::config::Config;
 use crate::event::EventProxy;
-use crate::event::Processor;
 use crate::multi_window::command_queue::{ MultiWindowCommandQueue };
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 use crate::display::Error as DisplayError;
@@ -52,7 +46,6 @@ impl MultiWindowProcessor {
                 &mut control_flow,
                 &mut event_queue,
                 &mut window_context_tracker,
-                &mut config,
                 &mut schedule_window_activation,
             ) { return; }
 
@@ -68,7 +61,7 @@ impl MultiWindowProcessor {
                 return;
             }
 
-            // If nothing is active, only process the inactive windows
+            // If nothing is active, process the inactive windows
             // otherwise process the active window first, then draw the inactive windows
             if !window_context_tracker.has_active_window() {
                 self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
@@ -93,7 +86,7 @@ impl MultiWindowProcessor {
                 processor.run_iteration(
                     &mut notifier,
                     &mut event_queue,
-                    event,
+                    event.clone(),
                     &mut control_flow,
                     active_tab.terminal,
                     &mut config,
@@ -103,7 +96,11 @@ impl MultiWindowProcessor {
                 command_queue
             };
 
-
+            // Handle Tab-bar events
+            {
+                active_ctx.tab_bar_processor.lock().handle_event(event.clone());
+            }
+            
             // let active_ctx = window_context_tracker.get_active_window_context();
             match multi_window_command_queue.run_user_input_commands(
                 &mut window_context_tracker,
@@ -174,7 +171,6 @@ impl MultiWindowProcessor {
         control_flow: &mut ControlFlow,
         event_queue: &mut Vec<GlutinEvent<Event>>,
         context_tracker: &mut WindowContextTracker,
-        config: &mut Config,
         schedule_window_activation: &mut Option<WindowId>,
     ) -> bool {
         
@@ -207,23 +203,6 @@ impl MultiWindowProcessor {
 
                     CloseRequested => {
                         context_tracker.close_window(window_id);
-                    },
-
-                    // Handle moving tabs
-                    MouseInput { state, button, .. } => {
-                        println!("Mouse input {:?} {:?}", state, button);
-                    },
-        
-                    CursorMoved { position: lpos, .. } => {
-                        println!("Cursor moving {:?}", lpos);
-                    },
-
-                    CursorEntered { .. } => {
-                        println!("Cursor Entered window {:?}", window_id);
-                    },
-
-                    CursorLeft { .. } => {
-                        println!("Cursor Left Window {:?}", window_id);
                     },
 
                     _ => {
