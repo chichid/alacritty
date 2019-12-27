@@ -203,10 +203,29 @@ impl MultiWindowProcessor {
                         } else {
                             context_tracker.deactivate_window(window_id);
                         }
-                    }
+                    },
+
                     CloseRequested => {
                         context_tracker.close_window(window_id);
                     },
+
+                    // Handle moving tabs
+                    MouseInput { state, button, .. } => {
+                        println!("Mouse input {:?} {:?}", state, button);
+                    },
+        
+                    CursorMoved { position: lpos, .. } => {
+                        println!("Cursor moving {:?}", lpos);
+                    },
+
+                    CursorEntered { .. } => {
+                        println!("Cursor Entered window {:?}", window_id);
+                    },
+
+                    CursorLeft { .. } => {
+                        println!("Cursor Left Window {:?}", window_id);
+                    },
+
                     _ => {
                     }
                 }
