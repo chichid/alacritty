@@ -498,13 +498,13 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     let tab_count = 4;
     let dpr = size_info.dpr as f32;
     
-    let tab_font_size_factor = 0.8;
+    let tab_font_size_factor = 0.75;
     let tab_width = size_info.width as f32 / tab_count as f32;
     let tab_height = 26. * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
 
-    let border_color = Rgb { r: 150, g: 150, b: 150 };
-    let border_width = 0.7 * dpr;
+    let border_color = Rgb { r: 100, g: 100, b: 100 };
+    let border_width = 0.7;
 
     let active_tab_brightness_factor = 1.1;
     let hovered_tab_brightness_factor = 0.9;
@@ -615,7 +615,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
                 tab_width - 2. * border_width,
                 tab_height - 2. * border_width,
                 tab_color,
-                0.35,
+                0.4,
             ));
         }
     }
