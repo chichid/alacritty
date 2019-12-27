@@ -374,7 +374,7 @@ impl Display {
         let metrics = self.glyph_cache.font_metrics();
         let glyph_cache = &mut self.glyph_cache;
         let size_info = self.size_info;
-
+        
         let selection = !terminal.selection().as_ref().map(Selection::is_empty).unwrap_or(true);
         let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE);
 
@@ -392,6 +392,10 @@ impl Display {
         let mut lines = RenderLines::new();
         let mut urls = Urls::new();
 
+        let mut size_info = size_info.clone();
+        size_info.padding_y += config.window.tab_bar_height as f32 * size_info.dpr as f32;
+        self.renderer.resize(&size_info);
+        
         // Draw grid
         {
             let _sampler = self.meter.sampler();
@@ -500,7 +504,7 @@ fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInf
     
     let tab_font_size_factor = 0.75;
     let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = 26. * dpr;
+    let tab_height = config.window.tab_bar_height as f32 * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
 
     let border_color = Rgb { r: 100, g: 100, b: 100 };

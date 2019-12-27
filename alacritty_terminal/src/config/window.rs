@@ -10,6 +10,9 @@ use crate::index::{Column, Line};
 /// Default Alacritty name, used for window title and class.
 pub const DEFAULT_NAME: &str = "Alacritty";
 
+/// Default Tab Bar Height
+pub const DEFAULT_TAB_BAR_HEIGHT: u8 = 26;
+
 #[serde(default)]
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct WindowConfig {
@@ -40,6 +43,10 @@ pub struct WindowConfig {
     /// Window title
     #[serde(default = "default_title")]
     pub title: String,
+
+    /// TAB Bar Height
+    #[serde(deserialize_with = "failure_default")]
+    pub tab_bar_height: u8,
 
     /// Window class
     #[serde(deserialize_with = "from_string_or_deserialize")]
@@ -85,6 +92,7 @@ impl Default for WindowConfig {
             gtk_theme_variant: Default::default(),
             start_maximized: Default::default(),
             title: default_title(),
+            tab_bar_height: DEFAULT_TAB_BAR_HEIGHT,
         }
     }
 }
