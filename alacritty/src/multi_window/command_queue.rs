@@ -91,7 +91,16 @@ impl MultiWindowCommandQueue {
         if window_ctx.term_tab_collection.lock().is_empty() {
             context_tracker.close_window(window_ctx.window_id);
         } else if need_redraw {
-            window_ctx.processor.lock().request_redraw();
+            let mut terminal = {
+                let tab_collection = window_ctx.term_tab_collection.lock();
+                let active_tab = tab_collection.get_active_tab().unwrap();
+                active_tab.terminal.clone()
+            };
+
+            let mut processor = window_ctx.processor.lock();
+            let config = config_arc.lock();
+            processor.update_size(&mut terminal.lock(), &config);
+            processor.request_redraw();
         }
 
         Ok(())

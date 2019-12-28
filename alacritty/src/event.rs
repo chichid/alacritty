@@ -378,7 +378,7 @@ impl Processor {
         self.display.make_current();
     }
 
-    pub fn activate<T>(&mut self, terminal: &mut Term<T>, config: &Config) {
+    pub fn update_size<T>(&mut self, terminal: &mut Term<T>, config: &Config) {
         let SizeInfo {dpr, ..} = self.get_size_info();
         let lsize = self.display.window.inner_size();
         let mut display_update = DisplayUpdate::default();

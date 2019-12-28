@@ -186,7 +186,7 @@ impl WindowContext {
         );
 
         // Sync the size of the display and the terminal
-        processor.activate(&mut active_tab.terminal.lock(), config);
+        processor.update_size(&mut active_tab.terminal.lock(), config);
 
         Ok(WindowContext {
             window_id,

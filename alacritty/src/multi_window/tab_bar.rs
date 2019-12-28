@@ -182,11 +182,12 @@ impl TabBarRenderer {
         let text_height = line_height.floor().max(1.) as f32;
 
         let mut sm = *size_info;
-        sm.padding_x = (i as f32) * tab_width + tab_width / 2. - text_width / 2.;
+        sm.padding_x = ((i as f32) * tab_width + tab_width / 2. - text_width / 2.).max(0.);
         sm.padding_top = 0.0;
         sm.width = size_info.width + sm.padding_x;
         sm.cell_width = cell_width;
         
+        println!("SM is {:?} text_width {:?}", sm, text_width);
         renderer.resize(&sm);
 
         renderer.with_api(&config, &sm, |mut api| {

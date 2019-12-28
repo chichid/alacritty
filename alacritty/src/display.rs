@@ -336,6 +336,14 @@ impl Display {
             self.size_info.height = (size.height as f32).max(cell_height + 2. * padding_y);
         }
 
+        // Handle tab-bar visibility
+        let is_tab_bar_visible = self.tab_bar_renderer.tab_bar_visible();
+        self.size_info.padding_top = if is_tab_bar_visible {
+            config.window.tab_bar_height as f32 * self.size_info.dpr as f32
+        } else {
+            0.
+        };
+
         // Distribute excess padding equally on all sides
         if config.window.dynamic_padding {
             padding_x = dynamic_padding(padding_x, self.size_info.width, cell_width);
@@ -387,15 +395,6 @@ impl Display {
         let metrics = self.glyph_cache.font_metrics();
         let glyph_cache = &mut self.glyph_cache;
         let size_info = self.size_info;
-        
-        // Handle tab-bar visibility
-        let is_tab_bar_visible = self.tab_bar_renderer.tab_bar_visible();
-        self.size_info.padding_top = if is_tab_bar_visible {
-            config.window.tab_bar_height as f32 * self.size_info.dpr as f32
-        } else {
-            0.
-        };
-
         
         let selection = !terminal.selection().as_ref().map(Selection::is_empty).unwrap_or(true);
         let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE);
