@@ -135,8 +135,7 @@ impl<'a> WindowContextTracker {
 pub struct WindowContext {
     pub window_id: WindowId,
     pub processor: Arc<FairMutex<Processor>>,
-    pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
-    pub tab_bar_renderer: Arc<TabBarRenderer<EventProxy>>,
+    pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,    
     pub(super) tab_bar_processor: Arc<FairMutex<TabBarProcessor<EventProxy>>>,
 }
 
@@ -169,7 +168,7 @@ impl WindowContext {
         // Create a display
         //
         // The display manages a window and can draw the terminal.
-        let display = Display::new(config, estimated_dpr, window_event_loop)?;
+        let display = Display::new(config, estimated_dpr, window_event_loop, tab_bar_renderer)?;
         let window_id = display.window.window_id();
         active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
@@ -194,7 +193,6 @@ impl WindowContext {
             processor: Arc::new(FairMutex::new(processor)),
             term_tab_collection,
             tab_bar_processor: Arc::new(FairMutex::new(tab_bar_processsor)),
-            tab_bar_renderer: Arc::new(tab_bar_renderer),
         })
     }
 

@@ -14,6 +14,7 @@
 
 //! The display subsystem including window management, font rasterization, and
 //! GPU drawing.
+use crate::multi_window::tab_bar::TabBarRenderer;
 use std::f64;
 use std::fmt;
 use std::time::Instant;
@@ -124,12 +125,16 @@ pub struct Display {
 
     renderer: QuadRenderer,
     glyph_cache: GlyphCache,
+
+    /// Tab bar support
     tab_bar_glyph_cache: GlyphCache,
+    tab_bar_renderer: TabBarRenderer,
+
     meter: Meter,
 }
 
 impl Display {
-    pub fn new(config: &Config, estimated_dpr: f64, event_loop: &EventLoopWindowTarget<Event>) -> Result<Display, Error> {
+    pub fn new(config: &Config, estimated_dpr: f64, event_loop: &EventLoopWindowTarget<Event>, tab_bar_renderer: TabBarRenderer) -> Result<Display, Error> {
         // Guess the target window dimensions
         let metrics = GlyphCache::static_metrics(config.font.clone(), estimated_dpr)?;
         let (cell_width, cell_height) = compute_cell_size(config, &metrics);
@@ -231,15 +236,17 @@ impl Display {
         }
 
         // Create the tab bar glyph-cache
-        let mut tab_bar_renderer = QuadRenderer::new()?;
-        let (mut tab_bar_glyph_cache, _, _) = Self::new_glyph_cache(dpr, &mut tab_bar_renderer, config)?;
-        tab_bar_renderer.with_loader(|mut api| {
+        let mut tab_bar_quad_renderer = QuadRenderer::new()?;
+        let (mut tab_bar_glyph_cache, _, _) = Self::new_glyph_cache(dpr, &mut tab_bar_quad_renderer, config)?;
+        tab_bar_quad_renderer.with_loader(|mut api| {
             let mut font = config.font.clone();
+            // TODO config
             font.size = font::Size::new(font.size.as_f32_pts() * 0.8);
             let _ = tab_bar_glyph_cache.update_font_size(font, size_info.dpr, &mut api);
         });
 
         Ok(Display {
+            tab_bar_renderer,
             window,
             renderer,
             glyph_cache,
@@ -486,7 +493,13 @@ impl Display {
             self.renderer.draw_rects(&size_info, rects);
         }
 
-        render_tabs(&mut self.renderer, &config, &size_info, &mut self.tab_bar_glyph_cache);
+        // Render the tab-bar
+        self.tab_bar_renderer.render(
+            &mut self.renderer, 
+            &config, 
+            &self.size_info,
+            &mut self.tab_bar_glyph_cache,
+        );
 
         // Draw render timer
         if config.render_timer() {
@@ -499,128 +512,6 @@ impl Display {
 
         self.window.swap_buffers();
     }   
-}
-
-fn render_tabs(renderer: &mut QuadRenderer, config: &Config, size_info: &SizeInfo, glyph_cache: &mut GlyphCache) {
-    let active_tab = 2;
-    let hovered_tab = 1;
-    let tab_count = 4;
-    let dpr = size_info.dpr as f32;
-    
-    let tab_font_size_factor = 0.75;
-    let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = config.window.tab_bar_height as f32 * dpr;
-    let tab_color = Rgb { r: 190, g: 190, b: 190 };
-
-    let border_color = Rgb { r: 100, g: 100, b: 100 };
-    let border_width = 0.7;
-
-    let active_tab_brightness_factor = 1.1;
-    let hovered_tab_brightness_factor = 0.9;
-    
-    let close_icon_padding = 10.0 * dpr;
-
-    // Tabs background
-    let mut rects = Vec::new();
-
-    for i in 0..tab_count {
-        let tab_x = (i as f32) * tab_width;
-
-        let brightness_factor = if i == active_tab {
-            active_tab_brightness_factor 
-        } else if i == hovered_tab { 
-            hovered_tab_brightness_factor
-        } else {
-            1.0
-        };
-
-        // Border
-        rects.push(RenderRect::new(
-            tab_x,
-            0.,
-            tab_width,
-            tab_height,
-            border_color * brightness_factor,
-            1.,
-        ));
-       
-        // Content
-        rects.push(RenderRect::new(
-            tab_x + border_width,
-            0.,
-            tab_width - 2.0 * border_width,
-            tab_height - 2.0 * border_width,
-            tab_color * brightness_factor,
-            1.,
-        ));
-    }
-
-    renderer.draw_rects(&size_info, rects);
-
-    // Titles
-    let mut f = config.font.clone();
-    let offset_x = 1;
-    f.offset.x = offset_x;
-    f.offset.y = 10;
-
-    let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
-    let mut average_advance = metrics.average_advance;
-    let mut line_height = metrics.line_height;
-    let mut rects = Vec::new();
-
-    for i in 0..tab_count {
-        let tab_x = (i as f32) * tab_width;
-        let tab_title = format!("~/Github/fish - Tab {}", i);
-        let cell_width = offset_x as f32 + average_advance.floor().max(1.) as f32;
-
-        let text_width = tab_title.len() as f32 * cell_width;
-        let text_height = line_height.floor().max(1.) as f32;
-
-        let mut sm = *size_info;
-        sm.padding_x = (i as f32) * tab_width + tab_width / 2. - text_width / 2.;
-        sm.padding_top = 0.0;
-        sm.width = size_info.width + sm.padding_x;
-        sm.cell_width = cell_width;
-        
-        renderer.resize(&sm);
-
-        renderer.with_api(&config, &sm, |mut api| {
-            api.render_string(
-                &tab_title,
-                Line(0),
-                glyph_cache,
-                None,
-            );
-        });
-
-        // Close Icon
-        if i == hovered_tab {
-            sm.padding_x = tab_x + close_icon_padding;
-            renderer.resize(&sm);
-            renderer.with_api(&config, &sm, |mut api| {
-                api.render_string(
-                    "x",
-                    Line(0),
-                    glyph_cache,
-                    None,
-                );
-            });
-        }
-
-        // Inactive tabs mask
-        if i != active_tab {
-            rects.push(RenderRect::new(
-                tab_x + border_width,
-                0. + border_width,
-                tab_width - 2. * border_width,
-                tab_height - 2. * border_width,
-                tab_color,
-                0.4,
-            ));
-        }
-    }
-
-    renderer.draw_rects(&size_info, rects);
 }
 
 /// Calculate padding to spread it evenly around the terminal content
