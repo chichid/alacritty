@@ -197,7 +197,7 @@ impl Display {
             cell_height,
             padding_x,
             padding_y,
-            padding_top: config.window.tab_bar_height as f32 * dpr as f32,
+            padding_top: 0.,
         };
 
         // Update OpenGL projection
@@ -387,6 +387,15 @@ impl Display {
         let metrics = self.glyph_cache.font_metrics();
         let glyph_cache = &mut self.glyph_cache;
         let size_info = self.size_info;
+        
+        // Handle tab-bar visibility
+        let is_tab_bar_visible = self.tab_bar_renderer.tab_bar_visible();
+        self.size_info.padding_top = if is_tab_bar_visible {
+            config.window.tab_bar_height as f32 * self.size_info.dpr as f32
+        } else {
+            0.
+        };
+
         
         let selection = !terminal.selection().as_ref().map(Selection::is_empty).unwrap_or(true);
         let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE);

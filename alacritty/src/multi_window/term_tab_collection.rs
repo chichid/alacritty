@@ -94,4 +94,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
             tab.update_tab_id(tab_id);
         }
     }
+
+    pub(super) fn tab_count(&self) -> usize {
+        self.tab_collection.len()
+    }
 }

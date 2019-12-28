@@ -163,7 +163,7 @@ impl WindowContext {
         let tab_bar_state = TabBarState::new(term_tab_collection.clone());
         let tab_bar_state_arc = Arc::new(FairMutex::new(tab_bar_state));
         let tab_bar_processsor = TabBarProcessor::new(tab_bar_state_arc.clone());
-        let tab_bar_renderer = TabBarRenderer::new(tab_bar_state_arc.clone());
+        let tab_bar_renderer = TabBarRenderer::new(tab_bar_state_arc.clone(), term_tab_collection.clone());
         
         // Create a display
         //

@@ -73,12 +73,23 @@ impl<T> TabBarProcessor<T> {
 }
 
 pub struct TabBarRenderer {
+  term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
   tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>,
 }
 
 impl TabBarRenderer {
-  pub fn new(tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>) -> TabBarRenderer {
-    TabBarRenderer { tab_bar_state }
+  pub fn new(
+    tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>,
+    term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
+  ) -> TabBarRenderer {
+    TabBarRenderer { 
+      tab_bar_state,
+      term_tab_collection,
+    }
+  }
+
+  pub fn tab_bar_visible(&self) -> bool {
+    self.term_tab_collection.lock().tab_count() > 1
   }
 
   pub fn render(
@@ -88,22 +99,30 @@ impl TabBarRenderer {
     size_info: &SizeInfo,
     glyph_cache: &mut GlyphCache,
   ) {
-    let active_tab = 2;
-    let hovered_tab = 1;
-    let tab_count = 4;
-    let dpr = size_info.dpr as f32;
-    
+    if !self.tab_bar_visible() {
+      return;
+    }
+
+    let (active_tab, tab_count) = {
+      let tab_collection = self.term_tab_collection.lock();
+      (tab_collection.get_active_tab(), tab_collection.tab_count())
+    };
+
+    if active_tab.is_none() {
+      return;
+    }
+
+    let active_tab = active_tab.unwrap().tab_id;
+    let hovered_tab = active_tab;
+    let dpr = size_info.dpr as f32;    
     let tab_font_size_factor = 0.75;
     let tab_width = size_info.width as f32 / tab_count as f32;
     let tab_height = config.window.tab_bar_height as f32 * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
-
     let border_color = Rgb { r: 100, g: 100, b: 100 };
     let border_width = 0.7;
-
     let active_tab_brightness_factor = 1.1;
-    let hovered_tab_brightness_factor = 0.9;
-    
+    let hovered_tab_brightness_factor = 0.9;   
     let close_icon_padding = 10.0 * dpr;
 
     // Tabs background
