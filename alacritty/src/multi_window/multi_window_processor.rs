@@ -137,7 +137,6 @@ impl MultiWindowProcessor {
                     let tab_id = result.tab_id;
                     
                     let should_exit = {
-
                         let mut tab_collection = ctx.term_tab_collection.lock();
                         tab_collection.close_tab(tab_id);
                         tab_collection.is_empty()
@@ -145,20 +144,21 @@ impl MultiWindowProcessor {
                     
                     if should_exit {
                         context_tracker.close_window(window_id);
+                    } else {
+                        // Redraw the active tab
+                        let active_tab = ctx.get_active_tab()?;
+                        let mut terminal = active_tab.terminal.lock();
+                        let mut processor = ctx.processor.lock();
+                        processor.update_size(&mut terminal, config);
+                        processor.request_redraw();
                     }
 
                     return None;
-                }
-                
-                let active_tab = ctx.get_active_tab()?;
-
-                if active_tab.tab_id == result.tab_id {
+                } else {
+                    // Redraw the active tab
+                    let active_tab = ctx.get_active_tab()?;
                     let mut terminal = active_tab.terminal.lock();
                     terminal.dirty = true;
-
-                    let mut processor = ctx.processor.lock();
-                    processor.update_size(&mut terminal, config);
-                    processor.request_redraw();
                 }
 
                 Some(true)
