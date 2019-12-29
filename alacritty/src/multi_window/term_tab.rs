@@ -25,6 +25,7 @@ pub struct TermTab<T> {
     pub terminal: Arc<FairMutex<Term<EventProxyWrapper<T>>>>,
     pub resize_handle: Arc<FairMutex<Box<dyn OnResize>>>,
     pub loop_tx: Sender<Msg>,
+    title: String,
     event_proxy_wrapper: EventProxyWrapper<T>,
     tab_handle: Arc<FairMutex<TermTabHandle>>,
     // pub io_thread: JoinHandle<(EventLoop, terminal_event_loop::State)>,
@@ -105,6 +106,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         terminal_event_loop.spawn();
 
         TermTab {
+            title: String::default(),
             tab_id,
             tab_handle,
             terminal,
@@ -117,6 +119,14 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
 
     pub(super) fn set_window_id(&mut self, window_id: WindowId) {
         self.tab_handle.lock().window_id = Some(window_id);
+    }
+
+    pub(super) fn set_title(&mut self, title: String) {
+        self.title = title;
+    }
+
+    pub(super) fn title(&mut self) -> String {
+        self.title.clone()
     }
 
     pub(super) fn update_tab_id(&mut self, new_id: usize) {

@@ -93,7 +93,7 @@ impl MultiWindowCommandQueue {
         } else if need_redraw {
             let mut terminal = {
                 let tab_collection = window_ctx.term_tab_collection.lock();
-                let active_tab = tab_collection.get_active_tab().unwrap();
+                let active_tab = tab_collection.active_tab().unwrap();
                 active_tab.terminal.clone()
             };
 

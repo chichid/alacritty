@@ -22,7 +22,7 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         }
     }
 
-    pub fn get_active_tab(&self) -> Option<TermTab<T>> {
+    pub(super) fn active_tab(&self) -> Option<TermTab<T>> {
         if self.active_tab >= self.tab_collection.len() {
             return None;
         }
@@ -30,10 +30,13 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         Some(self.tab_collection[self.active_tab].clone())
     }
 
+    pub(super) fn tab(&mut self, tab_id: usize) -> &mut TermTab<T> {
+        &mut self.tab_collection[tab_id]
+    }
+
     pub(super) fn initialize(&mut self, config: &Config, dispatcher: Sender<MultiWindowEvent>) -> TermTab<T> {
         // This decouples the terminal initialization from the display, to allow faster startup time
-        // For the first terminal, the resizing in the event loop kicks in and will eventually
-        // resize the current terminal and value here will do
+        // we create the terminal without size_info first then request resize when the screen is created
         let dummy_display_size_info = SizeInfo {
             width: 100.0,
             height: 100.0,
@@ -52,7 +55,7 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.add_tab(config, dummy_display_size_info, None, &dispatcher);
         self.activate_tab(0);
 
-        self.get_active_tab().unwrap()
+        self.active_tab().unwrap()
     }
 
     pub(super) fn is_empty(&self) -> bool {

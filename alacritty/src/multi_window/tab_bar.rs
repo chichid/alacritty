@@ -105,7 +105,7 @@ impl TabBarRenderer {
 
     let (active_tab, tab_count) = {
       let tab_collection = self.term_tab_collection.lock();
-      (tab_collection.get_active_tab(), tab_collection.tab_count())
+      (tab_collection.active_tab(), tab_collection.tab_count())
     };
 
     if active_tab.is_none() {
@@ -175,7 +175,7 @@ impl TabBarRenderer {
 
     for i in 0..tab_count {
         let tab_x = (i as f32) * tab_width;
-        let tab_title = format!("~/Github/fish - Tab {}", i);
+        let tab_title = self.term_tab_collection.lock().tab(i).title();
         let cell_width = offset_x as f32 + average_advance.floor().max(1.) as f32;
 
         let text_width = tab_title.len() as f32 * cell_width;
@@ -187,7 +187,6 @@ impl TabBarRenderer {
         sm.width = size_info.width + sm.padding_x;
         sm.cell_width = cell_width;
         
-        println!("SM is {:?} text_width {:?}", sm, text_width);
         renderer.resize(&sm);
 
         renderer.with_api(&config, &sm, |mut api| {
@@ -204,6 +203,7 @@ impl TabBarRenderer {
             sm.padding_x = tab_x + close_icon_padding;
             renderer.resize(&sm);
             renderer.with_api(&config, &sm, |mut api| {
+                // TODO config for this 'x'
                 api.render_string(
                     "x",
                     Line(0),

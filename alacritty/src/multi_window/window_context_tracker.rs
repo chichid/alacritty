@@ -196,9 +196,9 @@ impl WindowContext {
         })
     }
 
-    pub fn get_active_tab(&self) -> Option<TermTab<EventProxy>> {
+    pub fn active_tab(&self) -> Option<TermTab<EventProxy>> {
         let tab_collection = self.term_tab_collection.lock();
-        tab_collection.get_active_tab()
+        tab_collection.active_tab()
     }
 
     #[cfg(target_os = "macos")]

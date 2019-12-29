@@ -70,7 +70,7 @@ impl MultiWindowProcessor {
             }
         
             let active_ctx = window_context_tracker.get_active_window_context();
-            let active_tab = active_ctx.get_active_tab();
+            let active_tab = active_ctx.active_tab();
             if active_tab.is_none() {
                 self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
                return;
@@ -131,34 +131,37 @@ impl MultiWindowProcessor {
         match receiver.try_recv() {
             Ok(result) => {
                 let window_id = result.window_id?;
+                let tab_id = result.tab_id;
                 let ctx = context_tracker.get_context(window_id)?;
 
-                if result.wrapped_event == Event::Exit {
-                    let tab_id = result.tab_id;
-                    
-                    let should_exit = {
-                        let mut tab_collection = ctx.term_tab_collection.lock();
-                        tab_collection.close_tab(tab_id);
-                        tab_collection.is_empty()
-                    };
-                    
-                    if should_exit {
-                        context_tracker.close_window(window_id);
-                    } else {
-                        // Redraw the active tab
-                        let active_tab = ctx.get_active_tab()?;
-                        let mut terminal = active_tab.terminal.lock();
-                        let mut processor = ctx.processor.lock();
-                        processor.update_size(&mut terminal, config);
-                        processor.request_redraw();
+                match result.wrapped_event {
+                    Event::Exit => {
+                        let should_exit = {
+                            let mut tab_collection = ctx.term_tab_collection.lock();
+                            tab_collection.close_tab(tab_id);
+                            tab_collection.is_empty()
+                        };
+                        
+                        if should_exit {
+                            context_tracker.close_window(window_id);
+                        } else {
+                            // Redraw the active tab
+                            let active_tab = ctx.active_tab()?;
+                            let mut terminal = active_tab.terminal.lock();
+                            let mut processor = ctx.processor.lock();
+                            processor.update_size(&mut terminal, config);
+                            processor.request_redraw();
+                        }
+
+                        return None;
                     }
 
-                    return None;
-                } else {
-                    // Redraw the active tab
-                    let active_tab = ctx.get_active_tab()?;
-                    let mut terminal = active_tab.terminal.lock();
-                    terminal.dirty = true;
+                    Event::Title(title) => {
+                        ctx.term_tab_collection.lock().tab(tab_id).set_title(title);
+                        ctx.processor.lock().request_redraw();
+                    }
+
+                    _ => {}
                 }
 
                 Some(true)
@@ -243,7 +246,7 @@ impl MultiWindowProcessor {
         for inactive_ctx in context_tracker.get_all_window_contexts() {
             // TODO check if the window related to the context is maximized
            if !has_active_display  || inactive_ctx.window_id != active_window_id.unwrap() {
-               let tab = inactive_ctx.get_active_tab().unwrap();
+               let tab = inactive_ctx.active_tab().unwrap();
                if tab.terminal.lock().dirty {   
                    tab.terminal.lock().dirty = false;
                    inactive_ctx.processor.lock().redraw(tab.terminal.clone(), config);
