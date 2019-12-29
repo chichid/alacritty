@@ -51,6 +51,7 @@ impl MultiWindowProcessor {
 
             // PTY Detach for all windows and dirty state for inactive terminals
             if self.handle_pty_events(
+                &config,
                 &mut window_context_tracker,
                 &multi_window_rx,
             ) == None { return; }
@@ -97,10 +98,8 @@ impl MultiWindowProcessor {
             };
 
             // Handle Tab-bar events
-            {
-                active_ctx.tab_bar_processor.lock().handle_event(event.clone());
-            }
-            
+            active_ctx.tab_bar_processor.lock().handle_event(event.clone());
+
             // let active_ctx = window_context_tracker.get_active_window_context();
             match multi_window_command_queue.run_user_input_commands(
                 &mut window_context_tracker,
@@ -124,7 +123,8 @@ impl MultiWindowProcessor {
     }
 
     fn handle_pty_events(
-        &self, 
+        &self,
+        config: &Config,
         context_tracker: &mut WindowContextTracker, 
         receiver: &Receiver<MultiWindowEvent>
     ) -> Option<bool> {
@@ -137,6 +137,7 @@ impl MultiWindowProcessor {
                     let tab_id = result.tab_id;
                     
                     let should_exit = {
+
                         let mut tab_collection = ctx.term_tab_collection.lock();
                         tab_collection.close_tab(tab_id);
                         tab_collection.is_empty()
@@ -150,9 +151,14 @@ impl MultiWindowProcessor {
                 }
                 
                 let active_tab = ctx.get_active_tab()?;
+
                 if active_tab.tab_id == result.tab_id {
                     let mut terminal = active_tab.terminal.lock();
                     terminal.dirty = true;
+
+                    let mut processor = ctx.processor.lock();
+                    processor.update_size(&mut terminal, config);
+                    processor.request_redraw();
                 }
 
                 Some(true)
