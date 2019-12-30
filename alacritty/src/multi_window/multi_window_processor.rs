@@ -79,26 +79,46 @@ impl MultiWindowProcessor {
             let mut multi_window_command_queue = {
                 let mut command_queue = MultiWindowCommandQueue::default();
                 let mut processor = active_ctx.processor.lock();
-                let active_tab = active_tab.unwrap();
-                let mut notifier = Notifier(active_tab.loop_tx.clone());
-        
-                processor.make_current();
-                
-                processor.run_iteration(
-                    &mut notifier,
-                    &mut event_queue,
-                    event.clone(),
-                    &mut control_flow,
-                    active_tab.terminal,
-                    &mut config,
-                    &mut command_queue,
-                );
+
+                // Handle Tab-bar events
+                let size_info = processor.get_size_info();
+                let (need_redraw, skip_processor_run, cursor_icon) = {
+                    active_ctx.tab_bar_processor.lock().handle_event(
+                        &config, 
+                        &size_info, 
+                        event.clone(),
+                        &mut command_queue,
+                    )
+                };
+
+                if let Some(cursor_icon) = cursor_icon {
+                    processor.window_mut().set_mouse_cursor(cursor_icon);
+                }
+
+                if need_redraw {
+                    processor.request_redraw();
+                }
+
+                if !skip_processor_run {
+                    let active_tab = active_tab.unwrap();
+                    let mut notifier = Notifier(active_tab.loop_tx.clone());
+            
+                    processor.make_current();
+                    
+                    processor.run_iteration(
+                        &mut notifier,
+                        &mut event_queue,
+                        event.clone(),
+                        &mut control_flow,
+                        active_tab.terminal,
+                        &mut config,
+                        &mut command_queue,
+                    );
+                    
+                }
 
                 command_queue
             };
-
-            // Handle Tab-bar events
-            active_ctx.tab_bar_processor.lock().handle_event(event.clone());
 
             // let active_ctx = window_context_tracker.get_active_window_context();
             match multi_window_command_queue.run_user_input_commands(

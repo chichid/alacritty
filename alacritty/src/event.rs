@@ -378,6 +378,10 @@ impl Processor {
         self.display.make_current();
     }
 
+    pub fn window_mut(&mut self) -> &mut Window {
+        &mut self.display.window
+    }
+
     pub fn update_size<T>(&mut self, terminal: &mut Term<T>, config: &Config) {
         let SizeInfo {dpr, ..} = self.get_size_info();
         let lsize = self.display.window.inner_size();

@@ -136,7 +136,7 @@ pub struct WindowContext {
     pub window_id: WindowId,
     pub processor: Arc<FairMutex<Processor>>,
     pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,    
-    pub(super) tab_bar_processor: Arc<FairMutex<TabBarProcessor<EventProxy>>>,
+    pub(super) tab_bar_processor: Arc<FairMutex<TabBarProcessor>>,
 }
 
 impl WindowContext {
