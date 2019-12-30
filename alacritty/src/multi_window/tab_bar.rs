@@ -335,8 +335,7 @@ impl TabBarRenderer {
 
     // Titles
     let mut f = config.font.clone();
-    let offset_x = 1;
-    f.offset.x = offset_x;
+    f.offset.x = 0;
     f.offset.y = 10;
 
     let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
@@ -347,7 +346,7 @@ impl TabBarRenderer {
     for i in 0..tab_count {
         let tab_x = (i as f32) * tab_width;
         let tab_title = self.term_tab_collection.lock().tab(i).title();
-        let cell_width = offset_x as f32 + average_advance.floor().max(1.) as f32;
+        let cell_width = average_advance.floor().max(1.) as f32;
 
         let text_width = tab_title.len() as f32 * cell_width;
         let text_height = line_height.floor().max(1.) as f32;
