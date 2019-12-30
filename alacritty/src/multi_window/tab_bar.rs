@@ -291,7 +291,7 @@ impl TabBarRenderer {
     let tab_height = config.window.tab_bar_height as f32 * dpr;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
     let border_color = Rgb { r: 100, g: 100, b: 100 };
-    let border_width = 0.7;
+    let border_width = 0.5;
     let active_tab_brightness_factor = 1.2;
     let hovered_tab_brightness_factor = 0.9;   
     let close_icon_padding = CLOSE_ICON_PADDING * dpr;
