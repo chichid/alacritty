@@ -1,3 +1,4 @@
+use glutin::dpi::LogicalPosition;
 use crate::event::EventProxy;
 use std::sync::Arc;
 
@@ -38,37 +39,70 @@ impl<T> TabBarState<T> {
 
 pub(super) struct TabBarProcessor<T> {
   tab_bar_state: Arc<FairMutex<TabBarState<T>>>,
+  is_mouse_down: bool,
+  mouse_down_position: Option<LogicalPosition>,
+  current_mouse_position: Option<LogicalPosition>,
+  mouse_down_window: Option<WindowId>,
+  current_window: Option<WindowId>,
 }
 
 impl<T> TabBarProcessor<T> {
   pub(super) fn new(tab_bar_state: Arc<FairMutex<TabBarState<T>>>) -> TabBarProcessor<T> {
-    TabBarProcessor { tab_bar_state }
+    TabBarProcessor { 
+      tab_bar_state,
+      is_mouse_down: false,
+      mouse_down_position: None,
+      current_mouse_position: None,
+      mouse_down_window: None,
+      current_window: None,
+    }
   }
 
-  pub(super) fn handle_event(&self, event: GlutinEvent<Event>) {
+  pub(super) fn handle_event(&mut self, event: GlutinEvent<Event>) {
     if let GlutinEvent::WindowEvent { event, window_id, .. } = event {
         use glutin::event::WindowEvent::*;
+        use glutin::event::{ElementState, MouseButton};
 
         match event {
+          CursorMoved { position, .. } => {
+            if self.is_mouse_down && self.mouse_down_position.is_none() {
+              self.mouse_down_position = Some(position);
+            }
+
+            if self.is_mouse_down {
+              self.current_mouse_position = Some(position);
+            }
+
+            // TODO update the current window based on the position, cursorEntered and 
+            // cursorLeft are no help here
+          }
+
           MouseInput { state, button, .. } => {
-            println!("Mouse input {:?} {:?}", state, button);
-          }
+            self.is_mouse_down = 
+              state == ElementState::Pressed && 
+              button == MouseButton::Left;
 
-          CursorMoved { position: lpos, .. } => {
-            println!("Cursor moving {:?}", lpos);
-          }
-
-          CursorEntered { .. } => {
-            println!("Cursor Entered window {:?}", window_id);
-          }
-
-          CursorLeft { .. } => {
-            println!("Cursor Left Window {:?}", window_id);
+            self.mouse_down_position = None;
+            self.current_mouse_position = None;
+            self.mouse_down_window = Some(window_id);
+            self.current_window = Some(window_id);
           }
 
           _ => {}
         }
+
+        if self.is_mouse_down {
+          self.update_tab_state();
+        }
     }
+  }
+
+  fn update_tab_state(&mut self) {
+    // TODO implement, update the tab state based on the events
+    println!(
+      "Mouse data current_window: {:?}, mouse_down_window: {:?}, mouse_down: {:?}, current_mouse: {:?}",
+      self.current_window, self.mouse_down_window, self.mouse_down_position, self.current_mouse_position
+    );
   }
 }
 
