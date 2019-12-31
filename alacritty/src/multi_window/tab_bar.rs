@@ -115,6 +115,13 @@ impl TabBarProcessor {
               new_mouse_down
             };
 
+            // if state == ElementState::Released {
+            //     println!(
+            //       "Mouse data current_window: {:?}, mouse_down_window: {:?}, mouse_down: {:?}, current_mouse: {:?}",
+            //       self.current_window, self.mouse_down_window, self.mouse_down_position, self.current_mouse_position
+            //     );    
+            // }
+            
             tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
             is_mouse_event = true;
           }
@@ -205,11 +212,6 @@ impl TabBarProcessor {
     }
     
     did_update
-
-    // println!(
-    //   "Mouse data current_window: {:?}, mouse_down_window: {:?}, mouse_down: {:?}, current_mouse: {:?}",
-    //   self.current_window, self.mouse_down_window, self.mouse_down_position, self.current_mouse_position
-    // );
   }
 
   fn get_tab_from_position(&self, config: &Config, size_info: &SizeInfo, position: LogicalPosition) -> Option<usize> {
@@ -225,7 +227,7 @@ impl TabBarProcessor {
     let y = position.y as f32 * dpr;
     
     if y < tab_height {
-      Some((position.x as f32 * tab_count as f32 / size_info.width).floor() as usize)
+      Some((position.x as f32 * tab_count as f32 * dpr / size_info.width).floor() as usize)
     } else {
       None
     }
@@ -233,11 +235,12 @@ impl TabBarProcessor {
 
   fn is_close_button(&self, tab_id: usize, size_info: &SizeInfo) -> bool {
     if let Some(mouse_pos) = self.current_mouse_position {
+      let dpr = size_info.dpr as f32;
       let tab_count = self.tab_bar_state.lock().term_tab_collection.lock().tab_count();
       let tab_x = size_info.width * tab_id as f32 / tab_count as f32;
-      let x_relative_to_tab = mouse_pos.x as f32 - tab_x;
+      let x_relative_to_tab = mouse_pos.x as f32 * dpr - tab_x;
 
-      x_relative_to_tab < CLOSE_ICON_PADDING + CLOSE_ICON_WIDTH
+      x_relative_to_tab < (CLOSE_ICON_PADDING + CLOSE_ICON_WIDTH * 2.) * dpr && x_relative_to_tab >= 0.
     } else {
       false
     }
