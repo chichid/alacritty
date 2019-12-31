@@ -194,8 +194,8 @@ impl TabBarProcessor {
 
       self.tab_bar_state.lock().dragged_tab = Some(DraggedTab {
         tab_id: dragged_tab,
-        x: current_mouse_position.x - mouse_down_position.x,
-        y: current_mouse_position.y - mouse_down_position.y,
+        x: (current_mouse_position.x - mouse_down_position.x) * size_info.dpr,
+        y: (current_mouse_position.y - mouse_down_position.y) * size_info.dpr,
       });
 
       true
@@ -509,7 +509,7 @@ impl TabBarRenderer {
 
     let text_width = tab_title.len() as f32 * cell_width;
 
-    let delta = (3.* cell_width + text_width + 2. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr as f32) - tab_width;
+    let delta = (3.* cell_width + text_width + 4. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr as f32) - tab_width;
     let tab_title_ellipsis = if delta > 0. {
       let cut_point = tab_title.len() - (delta / cell_width).floor() as usize;
       String::from(&tab_title[..cut_point]) + "..."
