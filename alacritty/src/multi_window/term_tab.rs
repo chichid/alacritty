@@ -125,7 +125,7 @@ impl<'a, T: 'static + 'a + EventListener + Clone + Send> TermTab<T> {
         self.title = title;
     }
 
-    pub(super) fn title(&mut self) -> String {
+    pub(super) fn title(&self) -> String {
         self.title.clone()
     }
 

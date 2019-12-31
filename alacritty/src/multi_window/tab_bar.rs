@@ -22,24 +22,24 @@ use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCom
 const CLOSE_ICON_PADDING: f32 = 10.0;
 const CLOSE_ICON_WIDTH: f32 = 5.0;
 
-pub struct DropZone {
-  tab_id: Option<usize>,
-  window_id: WindowId,
+#[derive (Clone, Copy)]
+pub struct DraggedTab {
+  pub tab_id: usize,
+  pub x: f64,
+  pub y: f64,
 }
 
 pub struct TabBarState<T> {
-  pub current_dragging_tab: Option<usize>,
   pub hovered_tab: Option<usize>,
-  pub current_drop_zone: Option<DropZone>,
+  pub dragged_tab: Option<DraggedTab>,
   term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>,
 }
 
 impl<T> TabBarState<T> {
   pub(super) fn new(term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>) -> TabBarState<T> {
     TabBarState { 
-      current_dragging_tab: None,
-      current_drop_zone: None,
       hovered_tab: None,
+      dragged_tab: None,
       term_tab_collection,
     }
   }
@@ -75,6 +75,8 @@ impl TabBarProcessor {
     let mut tab_state_updated = false;
     let mut command_queue_updated = false;
     let mut is_mouse_event = false;
+    let mut is_mouse_up = false;
+    let mut is_dragging = false;
     let mut cursor_icon = None;
 
     if let GlutinEvent::WindowEvent { event, window_id, .. } = event {
@@ -88,7 +90,7 @@ impl TabBarProcessor {
             }
 
             if self.is_mouse_down {
-              self.handle_tab_drag(config, size_info, command_queue);
+              is_dragging = self.handle_tab_drag(config, size_info, command_queue);
             }
 
             self.current_mouse_position = Some(position);
@@ -96,7 +98,10 @@ impl TabBarProcessor {
             
             // TODO update the current window based on the position, cursorEntered and 
             // cursorLeft are no help here
-            tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
+            if !is_dragging {
+              tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
+            }
+            
             is_mouse_event = true;
           }
 
@@ -109,7 +114,12 @@ impl TabBarProcessor {
               if new_mouse_down && !self.is_mouse_down {
                 self.mouse_down_position = None;
                 self.mouse_down_window = Some(window_id);
-                command_queue_updated = self.handle_tab_pressed(config, size_info, command_queue);
+                command_queue_updated = self.handle_mouse_down(config, size_info, command_queue);
+              }
+
+              if self.is_mouse_down && state == ElementState::Released {
+                self.handle_mouse_up();
+                is_mouse_up = true;
               }
               
               new_mouse_down
@@ -130,7 +140,7 @@ impl TabBarProcessor {
         }
     }
 
-    let need_redraw = command_queue_updated || tab_state_updated;
+    let need_redraw = command_queue_updated || tab_state_updated || is_dragging || is_mouse_up;
 
     let skip_processor_run = if is_mouse_event && self.current_mouse_position.is_some() {
       let tab_count = self.tab_bar_state.lock().term_tab_collection.lock().tab_count();
@@ -142,7 +152,7 @@ impl TabBarProcessor {
     (need_redraw, skip_processor_run, cursor_icon)
   }
 
-  fn handle_tab_pressed(
+  fn handle_mouse_down(
     &self,
     config: &Config,
     size_info: &SizeInfo,
@@ -167,28 +177,36 @@ impl TabBarProcessor {
     }
   }
 
+  fn handle_mouse_up(&self) {
+    self.tab_bar_state.lock().dragged_tab = None;
+  }
+
   fn handle_tab_drag(
     &self,
     config: &Config,
     size_info: &SizeInfo,
     command_queue: &mut MultiWindowCommandQueue
-  ) {
-    let drag_tab = if self.mouse_down_position.is_some() {
-      self.get_tab_from_position(
-        config, size_info, self.mouse_down_position.unwrap()
-      )
-    } else {
-      None
-    };
+  ) -> bool {
+    let mouse_down_position = self.mouse_down_position.unwrap();
 
-    if let Some(drag_tab) = drag_tab {
-      println!("Handle dragging {:?}", drag_tab);
+    if let Some(dragged_tab) = self.get_tab_from_position(config, size_info, mouse_down_position) {
+      let current_mouse_position = self.current_mouse_position.unwrap();
+
+      self.tab_bar_state.lock().dragged_tab = Some(DraggedTab {
+        tab_id: dragged_tab,
+        x: current_mouse_position.x - mouse_down_position.x,
+        y: current_mouse_position.y - mouse_down_position.y,
+      });
+
+      true
+    } else {
+      false
     }
   }
   
   fn handle_hover(&mut self, config: &Config, size_info: &SizeInfo, cursor_icon: &mut Option<CursorIcon>) -> bool {
     let mut did_update = false;
-    
+        
     let hovered_tab = if self.current_mouse_position.is_some() {
       self.get_tab_from_position(
         config, size_info, self.current_mouse_position.unwrap()
@@ -280,125 +298,264 @@ impl TabBarRenderer {
 
     let (active_tab, tab_count) = {
       let tab_collection = self.term_tab_collection.lock();
-      (tab_collection.active_tab(), tab_collection.tab_count())
+      
+      let active_tab_id = if tab_collection.active_tab().is_some() { 
+        Some(tab_collection.active_tab().unwrap().tab_id) 
+      } else { 
+        None 
+      };
+
+      (active_tab_id, tab_collection.tab_count())
     };
 
-    if active_tab.is_none() {
-      return;
-    }
+    let (hovered_tab, dragged_tab) = {
+      let tab_bar_state = self.tab_bar_state.lock();
+      (tab_bar_state.hovered_tab, tab_bar_state.dragged_tab)
+    };
 
-    let active_tab = active_tab.unwrap().tab_id;
-    let hovered_tab = self.tab_bar_state.lock().hovered_tab;
-    let dpr = size_info.dpr as f32;    
-    let tab_width = size_info.width as f32 / tab_count as f32;
-    let tab_height = config.window.tab_bar_height as f32 * dpr;
+    let border_width = 0.5;
     let tab_color = Rgb { r: 190, g: 190, b: 190 };
     let border_color = Rgb { r: 100, g: 100, b: 100 };
-    let border_width = 0.5;
-    let active_tab_brightness_factor = 1.2;
-    let hovered_tab_brightness_factor = 0.9;   
-    let close_icon_padding = CLOSE_ICON_PADDING * dpr;
+    let tab_width = size_info.width as f32 / tab_count as f32;    
+    let dpr = size_info.dpr as f32;    
+    let tab_height = config.window.tab_bar_height as f32 * dpr;
 
-    // Tabs background
-    let mut rects = Vec::new();
+    // Tabs rects
+    let mut backgrounds = Vec::new();
+    let mut masks = Vec::new();
 
     for i in 0..tab_count {
-        let tab_x = (i as f32) * tab_width;
+      let is_dragging = dragged_tab.is_some() && dragged_tab.unwrap().tab_id == i;
+      let is_active = Some(i) == active_tab;
+      let is_hovered = Some(i) == hovered_tab;
 
-        let brightness_factor = if i == active_tab {
-            active_tab_brightness_factor 
-        } else if Some(i) == hovered_tab { 
-            hovered_tab_brightness_factor
-        } else {
-            1.0
-        };
-
-        // Border
-        rects.push(RenderRect::new(
-            tab_x,
-            0.,
-            tab_width,
-            tab_height,
-            border_color * brightness_factor,
-            1.,
-        ));
-       
-        // Content
-        rects.push(RenderRect::new(
-            tab_x + border_width,
-            0.,
-            tab_width - 2.0 * border_width,
-            tab_height - 2.0 * border_width,
-            tab_color * brightness_factor,
-            1.,
-        ));
+      self.render_tab_rects(
+        &mut backgrounds,
+        &mut masks,
+        i, 
+        is_active && !is_dragging, 
+        is_hovered, 
+        None,
+        tab_width, 
+        tab_height, 
+        border_width, 
+        tab_color, 
+        border_color,
+      );
     }
 
-    renderer.draw_rects(&size_info, rects);
+    renderer.draw_rects(&size_info, backgrounds);
 
     // Titles
     let mut f = config.font.clone();
+    // TODO bring from tab-bar config
+    f.size = font::Size::new(f.size.as_f32_pts() * 0.85);
     f.offset.x = 0;
-    f.offset.y = 10;
-
     let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
-    let average_advance = metrics.average_advance;
-    let line_height = metrics.line_height;
-    let mut rects = Vec::new();
-
+    
     for i in 0..tab_count {
-        let tab_x = (i as f32) * tab_width;
-        let tab_title = self.term_tab_collection.lock().tab(i).title();
-        let cell_width = average_advance.floor().max(1.) as f32;
+      let is_dragging = dragged_tab.is_some() && dragged_tab.unwrap().tab_id == i;
 
-        let text_width = tab_title.len() as f32 * cell_width;
-        let text_height = line_height.floor().max(1.) as f32;
+      if !is_dragging {
+        self.render_tab_text(
+          renderer, 
+          config, 
+          glyph_cache, 
+          &metrics, 
+          i,
+          Some(i) == hovered_tab,
+          dragged_tab,
+          tab_width,
+          tab_height,
+          size_info.dpr,
+          &size_info,
+        );
+      }
+    }
 
-        let mut sm = *size_info;
-        sm.padding_x = ((i as f32) * tab_width + tab_width / 2. - text_width / 2.).max(0.);
-        sm.padding_top = 0.0;
-        sm.width = size_info.width + sm.padding_x;
-        sm.cell_width = cell_width;
-        
+    // Render masks on top of everything
+    renderer.draw_rects(&size_info, masks);
+
+    // Render the dragged item
+    if dragged_tab.is_some()  {
+      let tab_id = dragged_tab.unwrap().tab_id;
+      let mut dragging_backgrounds = Vec::new();
+      let mut dragging_masks = Vec::new();
+
+      self.render_tab_rects(
+        &mut dragging_backgrounds,
+        &mut dragging_masks,
+        tab_id, 
+        true, 
+        true, 
+        dragged_tab,
+        tab_width, 
+        tab_height, 
+        border_width, 
+        tab_color, 
+        border_color,
+      );
+      
+      renderer.draw_rects(&size_info, dragging_backgrounds);
+
+      self.render_tab_text(
+        renderer, 
+        config, 
+        glyph_cache, 
+        &metrics, 
+        tab_id,
+        true,
+        dragged_tab,
+        tab_width,
+        tab_height,
+        size_info.dpr,
+        &size_info,
+      );
+    }
+  }
+
+  fn render_tab_rects(&self,
+    rects: &mut Vec<RenderRect>,
+    masks: &mut Vec<RenderRect>,
+    tab_id: usize,
+    is_active: bool, 
+    is_hovered: bool,
+    dragged_tab: Option<DraggedTab>,
+    tab_width: f32, 
+    tab_height: f32,
+    border_width: f32,
+    tab_color: Rgb,
+    border_color: Rgb,
+  ) {
+    let active_tab_brightness_factor = 1.2;
+    let hovered_tab_brightness_factor = 0.9;   
+    let tab_x = (tab_id as f32) * tab_width;
+
+    let (tab_x, tab_y, alpha) = if dragged_tab.is_some() && dragged_tab.unwrap().tab_id == tab_id { 
+      let dt = dragged_tab.unwrap();
+      (tab_x + dt.x as f32, 0., 1.)
+    } else { 
+      let tab_x = (tab_id as f32) * tab_width;
+      (tab_x, 0., 1.)
+    };
+
+    let brightness_factor = if is_active {
+        active_tab_brightness_factor 
+    } else if is_hovered { 
+        hovered_tab_brightness_factor
+    } else {
+        1.0
+    };
+
+    // Border
+    rects.push(RenderRect::new(
+        tab_x,
+        tab_y,
+        tab_width,
+        tab_height,
+        border_color * brightness_factor,
+        alpha,
+    ));
+    
+    // Content
+    rects.push(RenderRect::new(
+        tab_x + border_width,
+        tab_y,
+        tab_width - 2.0 * border_width,
+        tab_height - 2.0 * border_width,
+        tab_color * brightness_factor,
+        alpha,
+    ));
+
+    // Mask (rendered on top of the texts)
+    if !is_active {
+      masks.push(RenderRect::new(
+          tab_x + border_width,
+          tab_y + border_width,
+          tab_width - 2. * border_width,
+          tab_height - 2. * border_width,
+          tab_color,
+          0.4,
+      ));
+    }
+  }
+
+  fn render_tab_text(&self,
+    renderer: &mut QuadRenderer,
+    config: &Config,
+    glyph_cache: &mut GlyphCache,
+    metrics: &font::Metrics,
+    tab_id: usize,
+    is_hovered: bool,
+    dragged_tab: Option<DraggedTab>,
+    tab_width: f32,
+    tab_height: f32, 
+    dpr: f64,
+    size_info: &SizeInfo,
+  ) {
+    let tab_x = (tab_id as f32) * tab_width;
+
+    let (tab_x, tab_y, alpha) = if dragged_tab.is_some() && dragged_tab.unwrap().tab_id == tab_id { 
+      let dt = dragged_tab.unwrap();
+      (tab_x + dt.x as f32, 0. , 1.) 
+    } else { 
+      (tab_x, 0., 1.)
+    };
+
+    let tab_title = self.term_tab_collection.lock().tab(tab_id).title();
+
+    let cell_width = metrics.average_advance.floor().max(1.) as f32;
+    let cell_height = metrics.line_height.floor().max(1.) as f32;
+
+    let text_width = tab_title.len() as f32 * cell_width;
+
+    let delta = (3.* cell_width + text_width + 2. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr as f32) - tab_width;
+    let tab_title_ellipsis = if delta > 0. {
+      let cut_point = tab_title.len() - (delta / cell_width).floor() as usize;
+      String::from(&tab_title[..cut_point]) + "..."
+    } else {
+      tab_title
+    };
+
+    let text_width = tab_title_ellipsis.len() as f32 * cell_width;
+
+    let padding_x = (tab_x + tab_width / 2. - text_width / 2.).max(0.);
+
+    let mut sm = SizeInfo {
+      padding_x, 
+      padding_top: tab_y + tab_height / 2. - cell_height / 2.,
+      padding_y: 0.,
+      width: size_info.width + padding_x,
+      height: size_info.height,
+      dpr: size_info.dpr,
+      cell_width,
+      cell_height,
+    };
+
+    renderer.resize(&sm);
+
+    renderer.with_api(&config, &sm, |mut api| {
+      api.render_string(
+          &tab_title_ellipsis,
+          Line(0),
+          glyph_cache,
+          None,
+      );
+    });
+
+    // Close Icon
+    if is_hovered {
+        sm.padding_x = tab_x + CLOSE_ICON_PADDING * dpr as f32;
         renderer.resize(&sm);
-
         renderer.with_api(&config, &sm, |mut api| {
+            // TODO config for this 'x'
             api.render_string(
-                &tab_title,
+                "x",
                 Line(0),
                 glyph_cache,
                 None,
             );
         });
-
-        // Close Icon
-        if Some(i) == hovered_tab {
-            sm.padding_x = tab_x + close_icon_padding;
-            renderer.resize(&sm);
-            renderer.with_api(&config, &sm, |mut api| {
-                // TODO config for this 'x'
-                api.render_string(
-                    "x",
-                    Line(0),
-                    glyph_cache,
-                    None,
-                );
-            });
-        }
-
-        // Inactive tabs mask
-        if i != active_tab {
-            rects.push(RenderRect::new(
-                tab_x + border_width,
-                0. + border_width,
-                tab_width - 2. * border_width,
-                tab_height - 2. * border_width,
-                tab_color,
-                0.4,
-            ));
-        }
     }
-
-    renderer.draw_rects(&size_info, rects);
-}
+  }
 }

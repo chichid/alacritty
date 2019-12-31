@@ -240,8 +240,8 @@ impl Display {
         let (mut tab_bar_glyph_cache, _, _) = Self::new_glyph_cache(dpr, &mut tab_bar_quad_renderer, config)?;
         tab_bar_quad_renderer.with_loader(|mut api| {
             let mut font = config.font.clone();
-            // TODO config
-            font.size = font::Size::new(font.size.as_f32_pts() * 0.8);
+            // TODO bring from tab-bar config
+            font.size = font::Size::new(font.size.as_f32_pts() * 0.85);
             let _ = tab_bar_glyph_cache.update_font_size(font, size_info.dpr, &mut api);
         });
 
