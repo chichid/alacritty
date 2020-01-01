@@ -296,7 +296,7 @@ impl TabBarRenderer {
       return;
     }
 
-    let (active_tab, tab_count) = {
+    let (active_tab_id, tab_count) = {
       let tab_collection = self.term_tab_collection.lock();
       
       let active_tab_id = if tab_collection.active_tab().is_some() { 
@@ -308,41 +308,17 @@ impl TabBarRenderer {
       (active_tab_id, tab_collection.tab_count())
     };
 
-    let (hovered_tab, dragged_tab) = {
+    let (hovered_tab, dragging_info) = {
       let tab_bar_state = self.tab_bar_state.lock();
       (tab_bar_state.hovered_tab, tab_bar_state.dragged_tab)
     };
 
-    let border_width = 0.5;
-    let tab_color = Rgb { r: 190, g: 190, b: 190 };
-    let border_color = Rgb { r: 100, g: 100, b: 100 };
-    let tab_width = size_info.width as f32 / tab_count as f32;    
-    let dpr = size_info.dpr as f32;    
-    let tab_height = config.window.tab_bar_height as f32 * dpr;
-    
-    // Titles
-    // TODO bring from tab-bar config
-    let mut f = config.font.clone();
-    f.size = font::Size::new(f.size.as_f32_pts() * 0.85);
-    let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
-    
     // Create a tab renderer
-    let mut tab_renderer = TabRenderer {
-      backgrounds: Vec::new(),
-      masks: Vec::new(),
-      config,
-      glyph_cache,
-      border_width,
-      size_info,
-      width: tab_width,
-      height: tab_height,
-      metrics,
-      border_color,
-      tab_color,
-      active_tab,
-      hovered_tab,
-      dragging_info: dragged_tab,
-    };
+    let tab_width = size_info.width as f32 / tab_count as f32;    
+    let mut tab_renderer = TabRenderer::new(config, size_info,glyph_cache,tab_width);
+    tab_renderer.active_tab = active_tab_id;
+    tab_renderer.hovered_tab = hovered_tab;
+    tab_renderer.dragging_info = dragging_info;
 
     // Draw backgrounds
     for i in 0..tab_count {
@@ -360,8 +336,8 @@ impl TabBarRenderer {
     renderer.draw_rects(&size_info, tab_renderer.masks.clone());
     
     // Draw dragged tab text
-    if let Some(dragged_tab) = dragged_tab {
-      let tab_index = dragged_tab.tab_id;
+    if let Some(dragging_info) = dragging_info {
+      let tab_index = dragging_info.tab_id;
       let dragged_tab_title = self.term_tab_collection.lock().tab(tab_index).title();
       tab_renderer.render_title(tab_index, dragged_tab_title, renderer);
     }
@@ -386,6 +362,41 @@ struct TabRenderer<'a> {
 }
 
 impl<'a> TabRenderer<'a> {
+  fn new(
+    config: &'a Config, 
+    size_info: &'a SizeInfo,
+    glyph_cache: &'a mut GlyphCache,
+    tab_width: f32,
+  ) -> TabRenderer<'a> {
+    // TODO bing from config or constants
+    let border_width = 0.5;
+    let tab_color = Rgb { r: 190, g: 190, b: 190 };
+    let border_color = Rgb { r: 100, g: 100, b: 100 };
+    let dpr = size_info.dpr as f32;    
+    let tab_height = config.window.tab_bar_height as f32 * dpr;
+
+    let mut f = config.font.clone();
+    f.size = font::Size::new(f.size.as_f32_pts() * 0.85);
+    let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
+        
+    TabRenderer {
+      backgrounds: Vec::new(),
+      masks: Vec::new(),
+      config,
+      glyph_cache,
+      border_width,
+      size_info,
+      width: tab_width,
+      height: tab_height,
+      metrics,
+      border_color,
+      tab_color,
+      active_tab: None,
+      hovered_tab: None,
+      dragging_info: None,
+    }
+  }
+
   fn render_background(&mut self, tab_index: usize) {
     let x = self.tab_x(tab_index); 
     
@@ -512,7 +523,8 @@ impl<'a> TabRenderer<'a> {
     let (cell_width, _) = self.cell_dimensions();
     let text_width = title.len() as f32 * cell_width;
     let dpr = self.size_info.dpr as f32;
-    let truncated_text_width = ellipsis.len() as f32 * cell_width + text_width + 2. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr;
+    let title_padding = 4. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr;
+    let truncated_text_width = ellipsis.len() as f32 * cell_width + text_width + title_padding;
     let delta =  truncated_text_width - self.width;
 
     if delta > 0. {
