@@ -398,7 +398,7 @@ impl<'a> TabRenderer<'a> {
   }
 
   fn render_background(&mut self, tab_index: usize) {
-    let x = self.tab_x(tab_index); 
+    let (x, y) = self.tab_position(tab_index); 
     
     let is_dragging = self.dragging_info.is_some() && self.dragging_info.unwrap().tab_id == tab_index;
     let active = self.active_tab == Some(tab_index);
@@ -407,7 +407,7 @@ impl<'a> TabRenderer<'a> {
     // Border
     let border = RenderRect::new(
       x,
-      0.,
+      y,
       self.width,
       self.height,
       TabRenderer::tab_state_color(self.border_color, active, hovered),
@@ -419,7 +419,7 @@ impl<'a> TabRenderer<'a> {
     // Content
     let fill = RenderRect::new(
       x + self.border_width,
-      0.,
+      y,
       self.width - 2.0 * self.border_width,
       self.height - 2.0 * self.border_width,
       TabRenderer::tab_state_color(self.tab_color, active, hovered),
@@ -432,6 +432,7 @@ impl<'a> TabRenderer<'a> {
     if is_dragging {
       let mut drag_placeholder_fill = fill;
       drag_placeholder_fill.x = tab_index as f32 * self.width;
+      drag_placeholder_fill.y = 0.;
       drag_placeholder_fill.color = TabRenderer::tab_state_color(self.tab_color, false, false);
       self.backgrounds.push(drag_placeholder_fill);
 
@@ -457,9 +458,7 @@ impl<'a> TabRenderer<'a> {
   }
 
   fn render_title(&mut self, tab_index:usize, title: String, renderer: &mut QuadRenderer) {
-    let tab_x = self.tab_x(tab_index);
-    let tab_y = 0.;
-
+    let (tab_x, tab_y) = self.tab_position(tab_index);
     let active = self.active_tab == Some(tab_index);
     let hovered = self.hovered_tab == Some(tab_index);
 
@@ -542,17 +541,18 @@ impl<'a> TabRenderer<'a> {
     (cell_width, cell_height)
   }
 
-  fn tab_x(&self, tab_index: usize) -> f32 {
+  fn tab_position(&self, tab_index: usize) -> (f32, f32) {
     let x = tab_index as f32 * self.width;
+    let y = 0.;
 
     if let Some(dragging_info) = self.dragging_info {
       if dragging_info.tab_id == tab_index {
-        x + dragging_info.x as f32
+        (x + dragging_info.x as f32,  y + dragging_info.y as f32) 
       } else {
-        x as f32
+        (x as f32, y)
       }
     } else {
-      x as f32
+      (x as f32, y)
     }
   }
 }
