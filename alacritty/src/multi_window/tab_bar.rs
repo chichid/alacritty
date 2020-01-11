@@ -184,14 +184,25 @@ impl TabBarState {
     size_info.dpr * config.window.tab_bar_height as f64
   }
 
-  fn update_dragging_info(&mut self, config: &Config, size_info: &SizeInfo, tab_id: usize, ghost_tab_index: Option<usize>, deltax: f64, deltay: f64) {
+  fn update_dragging_info(&mut self, config: &Config, size_info: &SizeInfo, tab_id: usize, deltax: f64, deltay: f64) {
+    let is_detached = deltay > self.tab_bar_height(size_info, config) * 1.5;
+
+    let ghost_tab_index = if is_detached {
+      None
+    } else {
+      let tab_width = size_info.width as f32 / self.tab_count() as f32;
+      let tab_delta = tab_id as f32 + deltax as f32 / tab_width;
+
+      Some(tab_delta.floor().max(0.) as usize)
+    };
+
     self.dragging_info = Some(DraggingInfo {
-        tab_id,
-        ghost_tab_index,
-        is_detached: deltay > self.tab_bar_height(size_info, config) * 1.5,
-        x: deltax,
-        y: deltay,
-      });
+      tab_id,
+      ghost_tab_index,
+      is_detached,
+      x: deltax,
+      y: deltay,
+    });
   }
 
   fn clear_dragging_info(&mut self) {
@@ -284,13 +295,6 @@ impl TabBarProcessor {
               new_mouse_down
             };
 
-            // if state == ElementState::Released {
-            //     println!(
-            //       "Mouse data current_window: {:?}, mouse_down_window: {:?}, mouse_down: {:?}, current_mouse: {:?}",
-            //       self.current_window, self.mouse_down_window, self.mouse_down_position, self.current_mouse_position
-            //     );    
-            // }
-            
             tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
             is_mouse_event = true;
           }
@@ -352,10 +356,8 @@ impl TabBarProcessor {
       let current_mouse_position = self.current_mouse_position.unwrap();
       let deltax = (current_mouse_position.x - mouse_down_position.x) * size_info.dpr;
       let deltay = (current_mouse_position.y - mouse_down_position.y) * size_info.dpr;
-
-      let ghost_tab_index = self.get_tab_from_mouse_position(config, size_info, current_mouse_position);
-
-      self.tab_bar_state.lock().update_dragging_info(config, size_info, tab_id, ghost_tab_index, deltax, deltay);
+      
+      self.tab_bar_state.lock().update_dragging_info(config, size_info, tab_id, deltax, deltay);
 
       true
     } else {
