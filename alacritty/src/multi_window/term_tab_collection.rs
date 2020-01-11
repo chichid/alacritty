@@ -30,7 +30,11 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         Some(self.tab_collection[self.active_tab].clone())
     }
 
-    pub(super) fn tab(&mut self, tab_id: usize) -> &mut TermTab<T> {
+    pub(super) fn tab(&self, tab_id: usize) -> &TermTab<T> {
+        &self.tab_collection[tab_id]
+    }
+
+    pub(super) fn tab_mut(&mut self, tab_id: usize) -> &mut TermTab<T> {
         &mut self.tab_collection[tab_id]
     }
 

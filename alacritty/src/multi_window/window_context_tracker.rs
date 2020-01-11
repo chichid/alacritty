@@ -135,7 +135,7 @@ impl<'a> WindowContextTracker {
 pub struct WindowContext {
     pub window_id: WindowId,
     pub processor: Arc<FairMutex<Processor>>,
-    pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,    
+    pub term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
     pub(super) tab_bar_processor: Arc<FairMutex<TabBarProcessor>>,
 }
 
@@ -160,15 +160,16 @@ impl WindowContext {
         // Create the tab bar state
         //
         // Holds the state of the tab bar such as: drag & drop state, active terminal
-        let tab_bar_state = TabBarState::new(term_tab_collection.clone());
+        let tab_bar_state = TabBarState::new();
         let tab_bar_state_arc = Arc::new(FairMutex::new(tab_bar_state));
         let tab_bar_processsor = TabBarProcessor::new(tab_bar_state_arc.clone());
-        let tab_bar_renderer = TabBarRenderer::new(tab_bar_state_arc.clone(), term_tab_collection.clone());
+        let tab_bar_renderer = TabBarRenderer::new(tab_bar_state_arc.clone());
         
         // Create a display
         //
         // The display manages a window and can draw the terminal.
         let display = Display::new(config, estimated_dpr, window_event_loop, tab_bar_renderer)?;
+        let size_info = display.size_info;
         let window_id = display.window.window_id();
         active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
@@ -182,12 +183,13 @@ impl WindowContext {
             config.font.size,
             active_tab.resize_handle.clone(), 
             message_buffer, 
-            display,         
+            display,      
         );
 
         // Sync the size of the display and the terminal
         processor.update_size(&mut active_tab.terminal.lock(), config);
-
+        tab_bar_state_arc.lock().update(&size_info, config, &term_tab_collection.lock());
+        
         Ok(WindowContext {
             window_id,
             processor: Arc::new(FairMutex::new(processor)),

@@ -23,30 +23,184 @@ const CLOSE_ICON_PADDING: f32 = 10.0;
 const CLOSE_ICON_WIDTH: f32 = 5.0;
 
 #[derive (Clone, Copy)]
-pub struct DraggingInfo {
+struct DraggingInfo {
   pub tab_id: usize,
+  pub ghost_tab_index: Option<usize>,
+  pub is_detached: bool,
   pub x: f64,
   pub y: f64,
 }
 
-pub struct TabBarState<T> {
-  pub hovered_tab: Option<usize>,
-  pub dragged_tab: Option<DraggingInfo>,
-  term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>,
+pub struct TabState {
+  title: String,
+  x: f32,
+  y: f32,
+  width: f32,
+  height: f32,
+  active: bool,
+  hovered: bool,
 }
 
-impl<T> TabBarState<T> {
-  pub(super) fn new(term_tab_collection: Arc<FairMutex<TermTabCollection<T>>>) -> TabBarState<T> {
-    TabBarState { 
+pub struct TabBarState {
+  pub(self) tabs: Vec<TabState>,
+  pub(self) dragged_tab: Option<TabState>,
+  pub(self) active_tab_index: Option<usize>,
+  pub(self) hovered_tab: Option<usize>,
+  pub(self) dragging_info: Option<DraggingInfo>,
+}
+
+impl TabBarState {
+  pub(super) fn new() -> TabBarState {
+    TabBarState {
+      active_tab_index: None,
       hovered_tab: None,
+      dragging_info: None,
       dragged_tab: None,
-      term_tab_collection,
+      tabs: Vec::new(),
     }
+  }
+
+  pub fn tab_count(&self) -> usize {
+    self.tabs.len()
+  }
+
+  pub fn tab_state(&self, index: usize) -> &TabState {
+    &self.tabs[index]
+  }
+
+  pub fn update(&mut self, size_info: &SizeInfo, config: &Config, tab_collection: &TermTabCollection<EventProxy>) {
+    let tab_count = tab_collection.tab_count();
+
+    let is_dragging_ghost_detached = if let Some(dragging_info) = self.dragging_info {
+      dragging_info.is_detached
+    } else {
+      false
+    };
+
+    self.active_tab_index = if let Some(active_tab) = tab_collection.active_tab() {
+      Some(active_tab.tab_id)
+    } else {
+      None
+    };
+    
+    let mut tabs = Vec::with_capacity(tab_count);
+    
+    let height = self.tab_bar_height(size_info, config) as f32;
+
+    let width = if is_dragging_ghost_detached {
+      size_info.width / (tab_count - 1) as f32
+    } else {
+      size_info.width / tab_count as f32
+    };
+
+    let mut current_tab_x = 0.;
+
+    for i in 0..tab_count {
+      let is_dragging = if let Some(dragging_info) = self.dragging_info {
+        dragging_info.tab_id == i
+      } else {
+        false
+      };
+
+      if is_dragging && is_dragging_ghost_detached {
+        continue;
+      }
+
+      let active = if let Some(active_tab_index) = self.active_tab_index {
+        !is_dragging && active_tab_index == i
+      } else {
+        false
+      };
+
+      let hovered = if let Some(hovered_tab_index) = self.hovered_tab {
+        !is_dragging && hovered_tab_index == i
+      } else {
+        false
+      };
+  
+      let title = if is_dragging { 
+        String::default()
+      } else {
+        tab_collection.tab(i).title()
+      };
+
+      let x = if let Some(dragging_info) = self.dragging_info {
+        if let Some(ghost_tab_index) = dragging_info.ghost_tab_index {
+          if i == dragging_info.tab_id {
+            ghost_tab_index as f32 * width
+          } else if i >= ghost_tab_index && i < dragging_info.tab_id {
+            current_tab_x + width
+          } else if i <= ghost_tab_index && i > dragging_info.tab_id {
+            current_tab_x - width
+          } else {
+            current_tab_x
+          }
+        } else {
+          current_tab_x
+        }
+      } else {
+        current_tab_x
+      };
+
+      tabs.push(TabState {
+        x,
+        y: 0.,
+        width,
+        height,
+        title,
+        active,
+        hovered,
+      });
+
+      current_tab_x += width;
+    }
+
+    self.dragged_tab = if let Some(dragging_info) = self.dragging_info {
+      let x = dragging_info.x as f32 + dragging_info.tab_id as f32 * size_info.width / tab_count as f32;
+
+      let y = if dragging_info.is_detached {
+        0. + dragging_info.y as f32
+      } else {
+        0.
+      };
+
+      Some(TabState {
+        x,
+        y,
+        width,
+        height,
+        title: tab_collection.tab(dragging_info.tab_id).title(),
+        active: true,
+        hovered: true,
+      })
+    } else {
+      None
+    };
+
+    self.tabs = tabs;
+  }
+
+  fn tab_bar_height(&self, size_info: &SizeInfo, config: &Config) -> f64 {
+    size_info.dpr * config.window.tab_bar_height as f64
+  }
+
+  fn update_dragging_info(&mut self, config: &Config, size_info: &SizeInfo, tab_id: usize, ghost_tab_index: Option<usize>, deltax: f64, deltay: f64) {
+    self.dragging_info = Some(DraggingInfo {
+        tab_id,
+        ghost_tab_index,
+        is_detached: deltay > self.tab_bar_height(size_info, config) * 1.5,
+        x: deltax,
+        y: deltay,
+      });
+  }
+
+  fn clear_dragging_info(&mut self) {
+    self.dragging_info = None;
   }
 }
 
 pub(super) struct TabBarProcessor {
-  tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>,
+  tab_bar_state: Arc<FairMutex<TabBarState>>,
   is_mouse_down: bool,
   mouse_down_position: Option<LogicalPosition>,
   current_mouse_position: Option<LogicalPosition>,
@@ -55,7 +209,7 @@ pub(super) struct TabBarProcessor {
 }
 
 impl TabBarProcessor {
-  pub(super) fn new(tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>) -> TabBarProcessor {
+  pub(super) fn new(tab_bar_state: Arc<FairMutex<TabBarState>>) -> TabBarProcessor {
     TabBarProcessor { 
       tab_bar_state,
       is_mouse_down: false,
@@ -66,7 +220,8 @@ impl TabBarProcessor {
     }
   }
 
-  pub(super) fn handle_event(&mut self, 
+  pub(super) fn handle_event(&mut self,
+    tab_collection: &TermTabCollection<EventProxy>,
     config: &Config, 
     size_info: &SizeInfo, 
     event: GlutinEvent<Event>,
@@ -84,6 +239,10 @@ impl TabBarProcessor {
         use glutin::event::{ElementState, MouseButton};
 
         match event {
+          RedrawRequested => {
+            self.tab_bar_state.lock().update(size_info, config, tab_collection);
+          }
+
           CursorMoved { position, .. } => {
             if self.is_mouse_down && self.mouse_down_position.is_none() {
               self.mouse_down_position = Some(position);
@@ -143,7 +302,7 @@ impl TabBarProcessor {
     let need_redraw = command_queue_updated || tab_state_updated || is_dragging || is_mouse_up;
 
     let skip_processor_run = if is_mouse_event && self.current_mouse_position.is_some() {
-      let tab_count = self.tab_bar_state.lock().term_tab_collection.lock().tab_count();
+      let tab_count = self.tab_bar_state.lock().tab_count();
       tab_count > 1 && self.current_mouse_position.unwrap().y < config.window.tab_bar_height as f64
     } else {
       false
@@ -164,7 +323,7 @@ impl TabBarProcessor {
 
     let mouse_pos = self.current_mouse_position.unwrap();
 
-    if let Some(pressed_tab) = self.get_tab_from_position(config, size_info, mouse_pos) {
+    if let Some(pressed_tab) = self.get_tab_from_mouse_position(config, size_info, mouse_pos) {
       if self.is_close_button(pressed_tab, size_info) {
         command_queue.push(MultiWindowCommand::CloseTab(pressed_tab));
       } else {
@@ -178,7 +337,7 @@ impl TabBarProcessor {
   }
 
   fn handle_mouse_up(&self) {
-    self.tab_bar_state.lock().dragged_tab = None;
+    self.tab_bar_state.lock().dragging_info = None;
   }
 
   fn handle_tab_drag(
@@ -189,17 +348,19 @@ impl TabBarProcessor {
   ) -> bool {
     let mouse_down_position = self.mouse_down_position.unwrap();
 
-    if let Some(dragged_tab) = self.get_tab_from_position(config, size_info, mouse_down_position) {
+    if let Some(tab_id) = self.get_tab_from_mouse_position(config, size_info, mouse_down_position) {
       let current_mouse_position = self.current_mouse_position.unwrap();
+      let deltax = (current_mouse_position.x - mouse_down_position.x) * size_info.dpr;
+      let deltay = (current_mouse_position.y - mouse_down_position.y) * size_info.dpr;
 
-      self.tab_bar_state.lock().dragged_tab = Some(DraggingInfo {
-        tab_id: dragged_tab,
-        x: (current_mouse_position.x - mouse_down_position.x) * size_info.dpr,
-        y: (current_mouse_position.y - mouse_down_position.y) * size_info.dpr,
-      });
+      let ghost_tab_index = self.get_tab_from_mouse_position(config, size_info, current_mouse_position);
+
+      self.tab_bar_state.lock().update_dragging_info(config, size_info, tab_id, ghost_tab_index, deltax, deltay);
 
       true
     } else {
+      self.tab_bar_state.lock().clear_dragging_info();
+      
       false
     }
   }
@@ -208,7 +369,7 @@ impl TabBarProcessor {
     let mut did_update = false;
         
     let hovered_tab = if self.current_mouse_position.is_some() {
-      self.get_tab_from_position(
+      self.get_tab_from_mouse_position(
         config, size_info, self.current_mouse_position.unwrap()
       )
     } else {
@@ -232,9 +393,20 @@ impl TabBarProcessor {
     did_update
   }
 
-  fn get_tab_from_position(&self, config: &Config, size_info: &SizeInfo, position: LogicalPosition) -> Option<usize> {
-    let dpr = size_info.dpr as f32;    
-    let tab_count = self.tab_bar_state.lock().term_tab_collection.lock().tab_count();
+  fn get_tab_from_mouse_position(&self, config: &Config, size_info: &SizeInfo, position: LogicalPosition) -> Option<usize> {
+    let dpr = size_info.dpr as f32;
+
+    let is_dragging_detached = if let Some(dragging_info) = self.tab_bar_state.lock().dragging_info {
+      dragging_info.is_detached
+    } else {
+      false
+    };
+
+    let tab_count = if is_dragging_detached {
+      self.tab_bar_state.lock().tab_count() + 1
+    } else {
+      self.tab_bar_state.lock().tab_count()
+    };
 
     // No tab bar if only one tab is there
     if tab_count <= 1 {
@@ -254,7 +426,7 @@ impl TabBarProcessor {
   fn is_close_button(&self, tab_id: usize, size_info: &SizeInfo) -> bool {
     if let Some(mouse_pos) = self.current_mouse_position {
       let dpr = size_info.dpr as f32;
-      let tab_count = self.tab_bar_state.lock().term_tab_collection.lock().tab_count();
+      let tab_count = self.tab_bar_state.lock().tab_count();
       let tab_x = size_info.width * tab_id as f32 / tab_count as f32;
       let x_relative_to_tab = mouse_pos.x as f32 * dpr - tab_x;
 
@@ -266,23 +438,20 @@ impl TabBarProcessor {
 }
 
 pub struct TabBarRenderer {
-  term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
-  tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>,
+  tab_bar_state: Arc<FairMutex<TabBarState>>,
 }
 
 impl TabBarRenderer {
   pub fn new(
-    tab_bar_state: Arc<FairMutex<TabBarState<EventProxy>>>,
-    term_tab_collection: Arc<FairMutex<TermTabCollection<EventProxy>>>,
+    tab_bar_state: Arc<FairMutex<TabBarState>>,
   ) -> TabBarRenderer {
     TabBarRenderer { 
       tab_bar_state,
-      term_tab_collection,
     }
   }
 
   pub fn tab_bar_visible(&self) -> bool {
-    self.term_tab_collection.lock().tab_count() > 1
+    self.tab_bar_state.lock().tab_count() > 1
   }
 
   pub fn render(
@@ -296,202 +465,123 @@ impl TabBarRenderer {
       return;
     }
 
-    let (active_tab_id, tab_count) = {
-      let tab_collection = self.term_tab_collection.lock();
-      
-      let active_tab_id = if tab_collection.active_tab().is_some() { 
-        Some(tab_collection.active_tab().unwrap().tab_id) 
-      } else { 
-        None 
-      };
+    let tab_bar_state = self.tab_bar_state.lock();
+    let mut backgrounds = Vec::new();
+    let mut masks = Vec::new();
 
-      (active_tab_id, tab_collection.tab_count())
-    };
-
-    let (hovered_tab, dragging_info, dragged_tab_index) = {
-      let tab_bar_state = self.tab_bar_state.lock();
-
-      let dragged_tab_index = if let Some(dragged_tab) = tab_bar_state.dragged_tab {
-        Some(dragged_tab.tab_id)
-      } else {
-        None
-      };
-
-      (tab_bar_state.hovered_tab, tab_bar_state.dragged_tab, dragged_tab_index)
-    };
-
-    // Create a tab renderer
-    let tab_width = size_info.width / tab_count as f32;
-    let mut tab_renderer = TabRenderer::new(config, size_info,glyph_cache, tab_width);
-    tab_renderer.active_tab = active_tab_id;
-    tab_renderer.hovered_tab = hovered_tab;
-    tab_renderer.dragging_info = dragging_info;
-
-    // Draw backgrounds
-    for i in 0..tab_count {
-      tab_renderer.render_background(i);
+    for i in 0..tab_bar_state.tab_count() {
+      self.render_background(&tab_bar_state.tab_state(i), &mut backgrounds);
     }
 
-    renderer.draw_rects(&size_info, tab_renderer.backgrounds.clone());
+    renderer.draw_rects(&size_info, backgrounds);
     
-    // Draw Titles
-    for i in 0..tab_count {
-      let title = format!("{} - {}", i + 1, self.term_tab_collection.lock().tab(i).title());
-      tab_renderer.render_title(i, title, renderer);
-    }
-
-    renderer.draw_rects(&size_info, tab_renderer.masks.clone());
-    
-    // Draw dragged tab text
-    if let Some(dragging_info) = dragging_info {
-      let tab_index = dragging_info.tab_id;
-      let dragged_tab_title = self.term_tab_collection.lock().tab(tab_index).title();
-      tab_renderer.render_title(tab_index, dragged_tab_title, renderer);
-    }
-  }
-}
-
-struct TabRenderer<'a> {
-  config: &'a Config,
-  glyph_cache: &'a mut GlyphCache,
-  backgrounds: Vec<RenderRect>,
-  masks: Vec<RenderRect>,
-  border_width: f32,
-  size_info: &'a SizeInfo,
-  width: f32,
-  height: f32,
-  metrics: font::Metrics,
-  border_color: Rgb,
-  tab_color: Rgb,
-  active_tab: Option<usize>,
-  hovered_tab: Option<usize>,
-  dragging_info: Option<DraggingInfo>,
-}
-
-impl<'a> TabRenderer<'a> {
-  fn new(
-    config: &'a Config, 
-    size_info: &'a SizeInfo,
-    glyph_cache: &'a mut GlyphCache,
-    tab_width: f32,
-  ) -> TabRenderer<'a> {
-    // TODO bing from config or constants
-    let border_width = 0.5;
-    let tab_color = Rgb { r: 190, g: 190, b: 190 };
-    let border_color = Rgb { r: 100, g: 100, b: 100 };
-    let dpr = size_info.dpr as f32;    
-    let tab_height = config.window.tab_bar_height as f32 * dpr;
-
     let mut f = config.font.clone();
     f.size = font::Size::new(f.size.as_f32_pts() * 0.85);
     let metrics = GlyphCache::static_metrics(f, size_info.dpr).unwrap();
-        
-    TabRenderer {
-      backgrounds: Vec::new(),
-      masks: Vec::new(),
-      config,
-      glyph_cache,
-      border_width,
-      size_info,
-      width: tab_width,
-      height: tab_height,
-      metrics,
-      border_color,
-      tab_color,
-      active_tab: None,
-      hovered_tab: None,
-      dragging_info: None,
+    
+    for i in 0..tab_bar_state.tab_count() {
+      self.render_title(&tab_bar_state.tab_state(i), &mut masks, &size_info, renderer, config, &metrics, glyph_cache);
+    }
+
+    renderer.draw_rects(&size_info, masks);
+    
+    if let Some(dragged_tab) = &tab_bar_state.dragged_tab {
+      let mut dragged_tab_background = Vec::new();
+      let mut dragged_tab_masks = Vec::new();
+      self.render_background(dragged_tab, &mut dragged_tab_background);
+
+      renderer.draw_rects(&size_info, dragged_tab_background);
+      self.render_title(dragged_tab, &mut dragged_tab_masks, &size_info, renderer, config, &metrics, glyph_cache);
+      renderer.draw_rects(&size_info, dragged_tab_masks);
     }
   }
 
-  fn render_background(&mut self, tab_index: usize) {
-    let (x, y, width) = self.dragging_aware_tab_bounds(tab_index); 
-    let active = self.active_tab == Some(tab_index);
-    let hovered = self.hovered_tab == Some(tab_index);
+  fn render_background(&self, tab_state: &TabState, backgrounds: &mut Vec<RenderRect>) {
+    let TabState { x, y, width, height, active, hovered, .. } = *tab_state; 
 
     // Border
     let border = RenderRect::new(
       x,
       y,
       width,
-      self.height,
-      TabRenderer::tab_state_color(self.border_color, active, hovered),
+      height,
+      self.tab_color(active, hovered) * 0.7,
       1.,
     );
 
-    self.backgrounds.push(border);
+    backgrounds.push(border);
     
     // Content
+    let border_width = self.border_width();
+
     let fill = RenderRect::new(
-      x + self.border_width,
+      x + border_width,
       y,
-      width - 2.0 * self.border_width - 1.,
-      self.height - 2.0 * self.border_width,
-      TabRenderer::tab_state_color(self.tab_color, active, hovered),
+      width - 2.0 * border_width - 1.,
+      height - 2.0 * border_width,
+      self.tab_color(active, hovered),
       1.,
     );
 
-    self.backgrounds.push(fill);
-
-    // Dragging placeholder
-    if self.dragging_info.is_some() && self.dragging_info.unwrap().tab_id == tab_index {
-      if !self.is_dragging_ghost_detached() {
-        let ghost_tab_index = self.ghost_tab_index().unwrap_or(tab_index);
-        let mut drag_placeholder_fill = fill;
-        drag_placeholder_fill.x = ghost_tab_index as f32 * width;
-        drag_placeholder_fill.y = 0.;
-        drag_placeholder_fill.color = TabRenderer::tab_state_color(self.tab_color, false, false);
-        self.backgrounds.push(drag_placeholder_fill);
-      }
-      
-      // Dragging ghost
-      self.masks.push(border);
-      self.masks.push(fill);
-    }
+    backgrounds.push(fill);
   }
 
-  fn render_title(&mut self, tab_index:usize, title: String, renderer: &mut QuadRenderer) {
-    let (tab_x, tab_y, tab_width) = self.dragging_aware_tab_bounds(tab_index);
-    let active = self.active_tab == Some(tab_index);
-    let hovered = self.hovered_tab == Some(tab_index);
+  fn border_width(&self) -> f32 {
+    // TODO get from config or theme
+    0.7
+  }
 
-    let (cell_width, cell_height) = self.cell_dimensions();
-    let ellipsis_tab_title = self.ellipsis_tab_title(title, tab_width);
+  fn render_title(&self, 
+    tab_state: &TabState,
+    masks: &mut Vec<RenderRect>, 
+    size_info: &SizeInfo,
+    renderer: &mut QuadRenderer, 
+    config: &Config, 
+    metrics: &font::Metrics,
+    glyph_cache: &mut GlyphCache
+  ) {
+    let TabState { x, y, width, height, active, hovered, title, .. } = tab_state;
+    let border_width = self.border_width();
+    
+    let cell_width = metrics.average_advance.floor().max(1.) as f32;
+    let cell_height = metrics.line_height.floor().max(1.) as f32;
+
+    let ellipsis_tab_title = self.ellipsis_tab_title(&title, cell_width, size_info.dpr as f32, *width);
     let text_width = ellipsis_tab_title.len() as f32 * cell_width;
-    let padding_x = (tab_x + tab_width / 2. - text_width / 2.).max(0.);
+    let padding_x = (x + width / 2. - text_width / 2.).max(0.);
 
     let mut sm = SizeInfo {
       padding_x, 
-      padding_top: tab_y + self.height / 2. - cell_height / 2.,
+      padding_top: y + height / 2. - cell_height / 2.,
       padding_y: 0.,
-      width: self.size_info.width + padding_x,
-      height: self.size_info.height,
-      dpr: self.size_info.dpr,
+      width: size_info.width + padding_x,
+      height: size_info.height,
+      dpr: size_info.dpr,
       cell_width,
       cell_height,
     };
     
     renderer.resize(&sm);
 
-    renderer.with_api(self.config, &sm, |mut api| {
+    renderer.with_api(config, &sm, |mut api| {
       api.render_string(
           &ellipsis_tab_title,
           Line(0),
-          self.glyph_cache,
+          glyph_cache,
           None,
       );
     });
 
     // Close Icon
-    if hovered {
-        sm.padding_x = tab_x + CLOSE_ICON_PADDING * self.size_info.dpr as f32;
+    if *hovered {
+        sm.padding_x = x + CLOSE_ICON_PADDING * size_info.dpr as f32;
         renderer.resize(&sm);
-        renderer.with_api(&self.config, &sm, |mut api| {
+        renderer.with_api(config, &sm, |mut api| {
             // TODO config for this 'x'
             api.render_string(
                 "x",
                 Line(0),
-                self.glyph_cache,
+                glyph_cache,
                 None,
             );
         });
@@ -499,19 +589,20 @@ impl<'a> TabRenderer<'a> {
 
     // Mask (rendered on top of the texts)
     if !active {
-      self.masks.push(RenderRect::new(
-          tab_x + self.border_width,
-          tab_y + self.border_width,
-          tab_width - 2. * self.border_width,
-          self.height - 2. * self.border_width,
-          self.tab_color,
+      masks.push(RenderRect::new(
+          x + border_width,
+          y + border_width,
+          width - 2. * border_width,
+          height - 2. * border_width,
+          self.tab_color(*active, *hovered),
           0.4,
       ));
     }
   }
 
-  fn tab_state_color(color: Rgb, active: bool, hovered: bool) -> Rgb {
+  fn tab_color(&self, active: bool, hovered: bool) -> Rgb {
     // TODO Move to constant or config
+    let color = Rgb { r: 190, g: 190, b: 190 };
     let active_tab_brightness_factor = 1.2;
     let hovered_tab_brightness_factor = 0.9;   
 
@@ -526,11 +617,9 @@ impl<'a> TabRenderer<'a> {
     color * factor 
   }
 
-  fn ellipsis_tab_title(&self, title: String, drag_aware_width: f32) -> String {
+  fn ellipsis_tab_title(&self, title: &str, cell_width: f32, dpr: f32, drag_aware_width: f32) -> String {
     let ellipsis = "...";
-    let (cell_width, _) = self.cell_dimensions();
     let text_width = title.len() as f32 * cell_width;
-    let dpr = self.size_info.dpr as f32;
     let title_padding = 4. * (CLOSE_ICON_WIDTH + CLOSE_ICON_PADDING) * dpr;
     let truncated_text_width = ellipsis.len() as f32 * cell_width + text_width + title_padding;
     let delta =  truncated_text_width - drag_aware_width;
@@ -539,80 +628,8 @@ impl<'a> TabRenderer<'a> {
       let cut_point = title.len() - (delta / cell_width).floor() as usize;
       String::from(&title[..cut_point]) + "..."
     } else {
-      title
+      title.to_string()
     }
-  }
-
-  fn cell_dimensions(&self) -> (f32, f32) {
-    let cell_width = self.metrics.average_advance.floor().max(1.) as f32;
-    let cell_height = self.metrics.line_height.floor().max(1.) as f32;
-    
-    (cell_width, cell_height)
-  }
-
-  fn dragging_aware_tab_bounds(&self, tab_index: usize) -> (f32, f32, f32) {
-    let x = tab_index as f32 * self.width;
-    let y = 0.;
-
-    if let Some(dragging_info) = self.dragging_info {
-      if tab_index == dragging_info.tab_id {
-        // Tab being dragged
-        let adjusted_x = x + dragging_info.x as f32;
-        let ajusted_y = if self.is_dragging_ghost_detached() {
-          y + dragging_info.y as f32
-        } else {
-          0.
-        };
-
-        (adjusted_x.max(0.), ajusted_y, self.width) 
-      } else if self.is_dragging_ghost_detached() {
-        // When a tab is detached
-        let tab_count = (self.size_info.width / self.width).floor() as usize;
-        let ajusted_width = self.size_info.width / (tab_count - 1) as f32;
-
-        let adjusted_x = if tab_index > dragging_info.tab_id {
-          (tab_index - 1) as f32 * ajusted_width
-        } else {
-          tab_index as f32 * ajusted_width
-        };
-        
-        (adjusted_x.max(0.), y, ajusted_width) 
-      } else if let Some(ghost_tab_index) = self.ghost_tab_index() {
-        println!("Ghost tab index {}", ghost_tab_index);
-
-        let adjusted_x = if tab_index <= ghost_tab_index  && tab_index > dragging_info.tab_id {
-          x - self.width as f32
-        } else if tab_index < dragging_info.tab_id && tab_index >= ghost_tab_index {
-          x + self.width as f32
-        } else {
-          x
-        }; 
-
-        (adjusted_x.max(0.), y, self.width)
-      } else {
-        (x, y, self.width)  
-      }
-    } else {
-      (x, y, self.width)
-    }
-  }
-
-  fn ghost_tab_index(&self) -> Option<usize> {
-    if let Some(dragging_info) = self.dragging_info {
-      let dragged_tab_middle_x = dragging_info.tab_id as f64 * self.width as f64 + self.width as f64 / 3.;
-      let dragged_tab_x = dragged_tab_middle_x + dragging_info.x;
-      Some((dragged_tab_x / self.width as f64).floor() as usize)
-    } else {
-      None
-    }
-  }
-
-  fn is_dragging_ghost_detached(&self) -> bool {
-    if let Some(dragging_info) = self.dragging_info {
-      dragging_info.y as f32 > self.height * 2.
-    } else {
-      false
-    }
-  }
+  }  
 }
 

@@ -84,6 +84,7 @@ impl MultiWindowProcessor {
                 let size_info = processor.get_size_info();
                 let (need_redraw, skip_processor_run, cursor_icon) = {
                     active_ctx.tab_bar_processor.lock().handle_event(
+                        &active_ctx.term_tab_collection.lock(),
                         &config, 
                         &size_info, 
                         event.clone(),
@@ -177,7 +178,7 @@ impl MultiWindowProcessor {
                     }
 
                     Event::Title(title) => {
-                        ctx.term_tab_collection.lock().tab(tab_id).set_title(title);
+                        ctx.term_tab_collection.lock().tab_mut(tab_id).set_title(title);
                         ctx.processor.lock().request_redraw();
                     }
 
