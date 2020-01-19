@@ -20,17 +20,16 @@ use crate::multi_window::term_tab_collection::TermTabCollection;
 use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 
 const CLOSE_ICON_PADDING: f32 = 10.0;
-const CLOSE_ICON_WIDTH: f32 = 5.0;
+const CLOSE_ICON_WIDTH: f32 = 10.0;
 
-#[derive (Clone, Copy)]
 struct DraggingInfo {
   pub tab_id: usize,
   pub ghost_tab_index: Option<usize>,
   pub is_detached: bool,
-  pub x: f64,
-  pub y: f64,
+  pub initial_tab_state: TabState,
 }
 
+#[derive (Clone)]
 pub struct TabState {
   title: String,
   x: f32,
@@ -50,7 +49,7 @@ pub struct TabBarState {
 }
 
 impl TabBarState {
-  pub(super) fn new() -> TabBarState {
+  pub (super) fn new() -> TabBarState {
     TabBarState {
       active_tab_index: None,
       hovered_tab: None,
@@ -60,18 +59,22 @@ impl TabBarState {
     }
   }
 
-  pub fn tab_count(&self) -> usize {
+  fn tab_count(&self) -> usize {
     self.tabs.len()
   }
 
-  pub fn tab_state(&self, index: usize) -> &TabState {
+  fn tab_state(&self, index: usize) -> &TabState {
     &self.tabs[index]
   }
 
-  pub fn update(&mut self, size_info: &SizeInfo, config: &Config, tab_collection: &TermTabCollection<EventProxy>) {
+  fn tab_bar_height(&self, size_info: &SizeInfo, config: &Config) -> f64 {
+    size_info.dpr * config.window.tab_bar_height as f64
+  }
+
+  pub (super) fn update(&mut self, size_info: &SizeInfo, config: &Config, tab_collection: &TermTabCollection<EventProxy>) {
     let tab_count = tab_collection.tab_count();
 
-    let is_dragging_ghost_detached = if let Some(dragging_info) = self.dragging_info {
+    let is_dragging_ghost_detached = if let Some(dragging_info) = &self.dragging_info {
       dragging_info.is_detached
     } else {
       false
@@ -96,7 +99,7 @@ impl TabBarState {
     let mut current_tab_x = 0.;
 
     for i in 0..tab_count {
-      let is_dragging = if let Some(dragging_info) = self.dragging_info {
+      let is_dragging = if let Some(dragging_info) = &self.dragging_info {
         dragging_info.tab_id == i
       } else {
         false
@@ -124,7 +127,7 @@ impl TabBarState {
         tab_collection.tab(i).title()
       };
 
-      let x = if let Some(dragging_info) = self.dragging_info {
+      let x = if let Some(dragging_info) = &self.dragging_info {
         if let Some(ghost_tab_index) = dragging_info.ghost_tab_index {
           if i == dragging_info.tab_id {
             ghost_tab_index as f32 * width
@@ -155,58 +158,66 @@ impl TabBarState {
       current_tab_x += width;
     }
 
-    self.dragged_tab = if let Some(dragging_info) = self.dragging_info {
-      let x = dragging_info.x as f32 + dragging_info.tab_id as f32 * size_info.width / tab_count as f32;
-
-      let y = if dragging_info.is_detached {
-        0. + dragging_info.y as f32
-      } else {
-        0.
-      };
-
-      Some(TabState {
-        x,
-        y,
-        width,
-        height,
-        title: tab_collection.tab(dragging_info.tab_id).title(),
-        active: true,
-        hovered: true,
-      })
-    } else {
-      None
-    };
-
     self.tabs = tabs;
   }
 
-  fn tab_bar_height(&self, size_info: &SizeInfo, config: &Config) -> f64 {
-    size_info.dpr * config.window.tab_bar_height as f64
-  }
-
   fn update_dragging_info(&mut self, config: &Config, size_info: &SizeInfo, tab_id: usize, deltax: f64, deltay: f64) {
+    let tab_state = if let Some(dragging_info) = &self.dragging_info {
+      dragging_info.initial_tab_state.clone()
+    } else {
+      self.tab_state(tab_id).clone()
+    };
+    
     let is_detached = deltay > self.tab_bar_height(size_info, config) * 1.5;
+
+    let x = tab_state.x + (deltax as f32);
+
+    let y = if is_detached {
+      0. + deltay as f32
+    } else {
+      0.
+    };
 
     let ghost_tab_index = if is_detached {
       None
     } else {
-      let tab_width = size_info.width as f32 / self.tab_count() as f32;
-      let tab_delta = tab_id as f32 + deltax as f32 / tab_width;
-
-      Some(tab_delta.floor().max(0.) as usize)
+      let ghost_tab_index = tab_id as i32 + (0.5 + deltax as f32 / tab_state.width as f32).floor() as i32;
+      Some(ghost_tab_index.max(0) as usize)
     };
+
+    let dragged_tab_state = TabState {
+      x: x.max(0.).min(size_info.width - tab_state.width),
+      y: y.max(0.).min(size_info.height * size_info.dpr as f32),
+      width: tab_state.width,
+      height: tab_state.height,
+      title: tab_state.title.clone(),
+      active: true,
+      hovered: true,
+    };
+
+    self.dragged_tab = Some(dragged_tab_state);
 
     self.dragging_info = Some(DraggingInfo {
       tab_id,
       ghost_tab_index,
       is_detached,
-      x: deltax,
-      y: deltay,
+      initial_tab_state: tab_state,
     });
   }
 
-  fn clear_dragging_info(&mut self) {
+  fn update_hovered_tab(&mut self, hovered_tab: Option<usize>) -> bool {
+    let did_update = self.hovered_tab != hovered_tab;
+    self.hovered_tab = hovered_tab;
+    did_update 
+  }
+
+  fn clear_dragging_info(&mut self) -> bool {
+    let did_change = self.dragging_info.is_some();
+
     self.dragging_info = None;
+    self.dragged_tab = None;
+
+    did_change
   }
 }
 
@@ -239,7 +250,6 @@ impl TabBarProcessor {
     command_queue: &mut MultiWindowCommandQueue,
   ) -> (bool, bool, Option<CursorIcon>) {
     let mut tab_state_updated = false;
-    let mut command_queue_updated = false;
     let mut is_mouse_event = false;
     let mut is_mouse_up = false;
     let mut is_dragging = false;
@@ -260,7 +270,11 @@ impl TabBarProcessor {
             }
 
             if self.is_mouse_down {
-              is_dragging = self.handle_tab_drag(config, size_info, command_queue);
+              is_dragging = self.handle_tab_drag(config, size_info);
+
+              if is_dragging {
+                tab_state_updated = true;
+              }
             }
 
             self.current_mouse_position = Some(position);
@@ -284,7 +298,7 @@ impl TabBarProcessor {
               if new_mouse_down && !self.is_mouse_down {
                 self.mouse_down_position = None;
                 self.mouse_down_window = Some(window_id);
-                command_queue_updated = self.handle_mouse_down(config, size_info, command_queue);
+                self.handle_mouse_down(&self.current_mouse_position.unwrap(), config, size_info, command_queue);
               }
 
               if self.is_mouse_down && state == ElementState::Released {
@@ -303,7 +317,7 @@ impl TabBarProcessor {
         }
     }
 
-    let need_redraw = command_queue_updated || tab_state_updated || is_dragging || is_mouse_up;
+    let need_redraw = tab_state_updated || is_dragging || is_mouse_up;
 
     let skip_processor_run = if is_mouse_event && self.current_mouse_position.is_some() {
       let tab_count = self.tab_bar_state.lock().tab_count();
@@ -317,42 +331,28 @@ impl TabBarProcessor {
 
   fn handle_mouse_down(
     &self,
+    mouse_position: &LogicalPosition,
     config: &Config,
     size_info: &SizeInfo,
     command_queue: &mut MultiWindowCommandQueue
-  ) -> bool {
-    if self.current_mouse_position.is_none() {
-      return false; 
-    }
-
-    let mouse_pos = self.current_mouse_position.unwrap();
-
-    if let Some(pressed_tab) = self.get_tab_from_mouse_position(config, size_info, mouse_pos) {
-      if self.is_close_button(pressed_tab, size_info) {
+  ) {
+    if let Some(pressed_tab) = self.get_tab_from_mouse_position(config, size_info, mouse_position) { 
+      if self.is_hover_close_button(size_info) {
         command_queue.push(MultiWindowCommand::CloseTab(pressed_tab));
       } else {
         command_queue.push(MultiWindowCommand::ActivateTab(pressed_tab));
       }
-
-      true
-    } else {
-      false 
     }
   }
 
-  fn handle_mouse_up(&self) {
-    self.tab_bar_state.lock().dragging_info = None;
+  fn handle_mouse_up(&self) -> bool {
+    self.tab_bar_state.lock().clear_dragging_info()
   }
 
-  fn handle_tab_drag(
-    &self,
-    config: &Config,
-    size_info: &SizeInfo,
-    command_queue: &mut MultiWindowCommandQueue
-  ) -> bool {
+  fn handle_tab_drag(&self, config: &Config, size_info: &SizeInfo) -> bool {
     let mouse_down_position = self.mouse_down_position.unwrap();
 
-    if let Some(tab_id) = self.get_tab_from_mouse_position(config, size_info, mouse_down_position) {
+    if let Some(tab_id) = self.get_tab_from_mouse_position(config, size_info, &mouse_down_position) {
       let current_mouse_position = self.current_mouse_position.unwrap();
       let deltax = (current_mouse_position.x - mouse_down_position.x) * size_info.dpr;
       let deltay = (current_mouse_position.y - mouse_down_position.y) * size_info.dpr;
@@ -361,44 +361,34 @@ impl TabBarProcessor {
 
       true
     } else {
-      self.tab_bar_state.lock().clear_dragging_info();
-      
-      false
+      self.tab_bar_state.lock().clear_dragging_info()
     }
   }
   
   fn handle_hover(&mut self, config: &Config, size_info: &SizeInfo, cursor_icon: &mut Option<CursorIcon>) -> bool {
-    let mut did_update = false;
-        
-    let hovered_tab = if self.current_mouse_position.is_some() {
-      self.get_tab_from_mouse_position(
-        config, size_info, self.current_mouse_position.unwrap()
-      )
+    // Tab hover
+    let hovered_tab = if let Some(current_mouse_position) = self.current_mouse_position {
+      self.get_tab_from_mouse_position(config, size_info, &current_mouse_position)
     } else {
       None
     };
 
-    if self.tab_bar_state.lock().hovered_tab != hovered_tab {
-      self.tab_bar_state.lock().hovered_tab = hovered_tab;
-      did_update = true;
+    let did_update = self.tab_bar_state.lock().update_hovered_tab(hovered_tab);
+
+    // Handle Close button cursor
+    if self.is_hover_close_button(size_info) {
+      *cursor_icon = Some(CursorIcon::Hand);
+    } else {
+      *cursor_icon = Some(CursorIcon::default());
     }
 
-    // Handle close button
-    if let (Some(hovered_tab), Some(mouse_pos)) = (hovered_tab, self.current_mouse_position)  {
-      if self.is_close_button(hovered_tab, size_info) {
-        *cursor_icon = Some(CursorIcon::Hand);
-      } else {
-        *cursor_icon = Some(CursorIcon::default());
-      }
-    }
-    
     did_update
   }
 
-  fn get_tab_from_mouse_position(&self, config: &Config, size_info: &SizeInfo, position: LogicalPosition) -> Option<usize> {
+  fn get_tab_from_mouse_position(&self, config: &Config, size_info: &SizeInfo, position: &LogicalPosition) -> Option<usize> {
     let dpr = size_info.dpr as f32;
 
-    let is_dragging_detached = if let Some(dragging_info) = self.tab_bar_state.lock().dragging_info {
+    let is_dragging_detached = if let Some(dragging_info) = &self.tab_bar_state.lock().dragging_info {
       dragging_info.is_detached
     } else {
       false
@@ -425,14 +415,18 @@ impl TabBarProcessor {
     }
   }
 
-  fn is_close_button(&self, tab_id: usize, size_info: &SizeInfo) -> bool {
-    if let Some(mouse_pos) = self.current_mouse_position {
-      let dpr = size_info.dpr as f32;
-      let tab_count = self.tab_bar_state.lock().tab_count();
-      let tab_x = size_info.width * tab_id as f32 / tab_count as f32;
-      let x_relative_to_tab = mouse_pos.x as f32 * dpr - tab_x;
+  fn is_hover_close_button(&self, size_info: &SizeInfo) -> bool {
+    let hovered_tab = if let Some(hovered_tab) = self.tab_bar_state.lock().hovered_tab {
+      hovered_tab
+    } else {
+      return false;
+    };
 
-      x_relative_to_tab < (CLOSE_ICON_PADDING + CLOSE_ICON_WIDTH * 2.) * dpr && x_relative_to_tab >= 0.
+    if let Some(mouse_pos) = self.current_mouse_position {
+      let hovered_tab_width = self.tab_bar_state.lock().tab_state(hovered_tab).width;
+      let tab_x = (size_info.dpr as f32 * mouse_pos.x as f32) % hovered_tab_width as f32;
+
+      tab_x < (CLOSE_ICON_PADDING + CLOSE_ICON_WIDTH * 2.)
     } else {
       false
     }
