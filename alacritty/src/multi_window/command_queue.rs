@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use mio_extras::channel::Sender;
-use glutin::event_loop::EventLoopWindowTarget;
 use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
+
+use glutin::event_loop::EventLoopWindowTarget;
+use glutin::window::WindowId;
 
 use crate::config::Config;
 use crate::display;
@@ -16,6 +18,9 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 pub enum MultiWindowCommand {
     NewWindow,
     CreateTab,
+    ActivateWindow(WindowId),
+    DeactivateWindow(WindowId),
+    CloseWindow(WindowId),
     ActivateTab(usize), // tab_id
     CloseCurrentTab,
     CloseTab(usize), // tab_id
@@ -36,7 +41,7 @@ impl MultiWindowCommandQueue {
         self.queue.push(command);
     }
 
-    pub fn run_user_input_commands<'a>(
+    pub fn run<'a>(
         &mut self,
         context_tracker: &mut WindowContextTracker,
         window_ctx: &WindowContext,
@@ -59,6 +64,19 @@ impl MultiWindowCommandQueue {
                         dispatcher.clone()
                     )?;
                 }
+
+                MultiWindowCommand::ActivateWindow(window_id) => {
+
+                }
+
+                MultiWindowCommand::DeactivateWindow(window_id) => {
+
+                }
+
+                MultiWindowCommand::CloseWindow(window_id) => {
+                    
+                }
+
                 MultiWindowCommand::CreateTab => {
                     let size_info = window_ctx.processor.lock().get_size_info();
                     let config = config_arc.lock();
@@ -73,14 +91,17 @@ impl MultiWindowCommandQueue {
 
                     tab_collection.activate_tab(tab_id);
                 }
+
                 MultiWindowCommand::ActivateTab(tab_id) => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.activate_tab(tab_id);
                 }
+
                 MultiWindowCommand::CloseCurrentTab => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_current_tab();
                 }
+
                 MultiWindowCommand::CloseTab(tab_id) => {
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_tab(tab_id);

@@ -11,7 +11,7 @@ use glutin::platform::desktop::EventLoopExtDesktop;
 use crate::config::Config;
 use crate::display::Error as DisplayError;
 use crate::event::EventProxy;
-use crate::multi_window::command_queue::MultiWindowCommandQueue;
+use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 
@@ -36,25 +36,29 @@ impl MultiWindowProcessor {
       multi_window_tx.clone(),
     )?;
 
-    let mut schedule_window_activation: Option<WindowId> = None;
+    let mut scheduled_window_to_activate: Option<WindowId> = None;
 
     // Run the process event loop
     window_event_loop.run_return(move |event, event_loop, mut control_flow| {
-      // Activation, Deactivation and closing of windows
-      if self.handle_multi_window_events(
+      let mut command_queue = MultiWindowCommandQueue::default();
+
+      // Activation, Deactivation and Closing of windows
+      self.handle_multi_window_events(
+        &mut command_queue,
+        &mut window_context_tracker,
         event.clone(),
         &mut control_flow,
         &mut event_queue,
-        &mut window_context_tracker,
-        &mut schedule_window_activation,
-      ) {
-        return;
-      }
+        &mut scheduled_window_to_activate,
+      );
 
       // PTY Detach for all windows and dirty state for inactive terminals
-      if self.handle_pty_events(&config, &mut window_context_tracker, &multi_window_rx) == None {
-        return;
-      }
+      self.handle_pty_events(
+        &mut command_queue,
+        &config, 
+        &mut window_context_tracker,
+        &multi_window_rx
+      );
 
       // If we closed all the windows
       if window_context_tracker.is_empty() {
@@ -76,52 +80,47 @@ impl MultiWindowProcessor {
         return;
       };
 
-      let mut multi_window_command_queue = {
-        let mut command_queue = MultiWindowCommandQueue::default();
-        let mut processor = active_ctx.processor.lock();
-
-        // Handle Tab-bar events
-        let size_info = processor.get_size_info();
-        let (need_redraw, skip_processor_run, cursor_icon) = {
-          active_ctx.tab_bar_processor.lock().handle_event(
-            &active_ctx.term_tab_collection.lock(),
-            &config,
-            &size_info,
-            event.clone(),
-            &mut command_queue,
-          )
-        };
-
-        if let Some(cursor_icon) = cursor_icon {
-          processor.window_mut().set_mouse_cursor(cursor_icon);
-        }
-
-        if need_redraw {
-          processor.request_redraw();
-        }
-
-        if !skip_processor_run {
-          let active_tab = active_tab.unwrap();
-          let mut notifier = Notifier(active_tab.loop_tx.clone());
-
-          processor.make_current();
-
-          processor.run_iteration(
-            &mut notifier,
-            &mut event_queue,
-            event.clone(),
-            &mut control_flow,
-            active_tab.terminal,
-            &mut config,
-            &mut command_queue,
-          );
-        }
-
-        command_queue
+      // Handle Tab-bar events
+      let (need_redraw, skip_processor_run, cursor_icon) = {
+        let size_info = active_ctx.processor.lock().get_size_info();
+      
+        active_ctx.tab_bar_processor.lock().handle_event(
+          &active_ctx.term_tab_collection.lock(),
+          &config,
+          &size_info,
+          event.clone(),
+          &mut command_queue,
+        )
       };
 
+      if let Some(cursor_icon) = cursor_icon {
+        active_ctx.processor.lock().window_mut().set_mouse_cursor(cursor_icon);
+      }
+
+      if need_redraw {
+        active_ctx.processor.lock().request_redraw();
+      }
+
+      if !skip_processor_run {
+        let mut processor = active_ctx.processor.lock();
+        let active_tab = active_tab.unwrap();
+        let mut notifier = Notifier(active_tab.loop_tx.clone());
+
+        processor.make_current();
+
+        processor.run_iteration(
+          &mut notifier,
+          &mut event_queue,
+          event.clone(),
+          &mut control_flow,
+          active_tab.terminal,
+          &mut config,
+          &mut command_queue,
+        );
+      }
+
       // let active_ctx = window_context_tracker.get_active_window_context();
-      match multi_window_command_queue.run_user_input_commands(
+      match command_queue.run(
         &mut window_context_tracker,
         &active_ctx,
         &mut config,
@@ -144,6 +143,7 @@ impl MultiWindowProcessor {
 
   fn handle_pty_events(
     &self,
+    command_queue: &mut MultiWindowCommandQueue,
     config: &Config,
     context_tracker: &mut WindowContextTracker,
     receiver: &Receiver<MultiWindowEvent>,
@@ -196,20 +196,17 @@ impl MultiWindowProcessor {
 
   fn handle_multi_window_events(
     &self,
+    command_queue: &mut MultiWindowCommandQueue,
+    context_tracker: &mut WindowContextTracker,
     event: GlutinEvent<Event>,
     control_flow: &mut ControlFlow,
     event_queue: &mut Vec<GlutinEvent<Event>>,
-    context_tracker: &mut WindowContextTracker,
-    schedule_window_activation: &mut Option<WindowId>,
-  ) -> bool {
+    scheduled_window_to_activate: &mut Option<WindowId>,
+  ) {
     match event {
       // Process events
       GlutinEvent::EventsCleared => {
         *control_flow = ControlFlow::Wait;
-
-        if event_queue.is_empty() {
-          return true;
-        }
       }
 
       // Handle Window Activate, Deactivate, Close Events
@@ -221,16 +218,15 @@ impl MultiWindowProcessor {
             if is_focused {
               // Do not activate the window right away, this causes weird selection behaviour
               // wait until the mouse_input is received on the next iteration or
-              *schedule_window_activation = Some(window_id);
+              *scheduled_window_to_activate = Some(window_id);
               *control_flow = ControlFlow::Poll;
-              return true;
             } else {
-              context_tracker.deactivate_window(window_id);
+              command_queue.push(MultiWindowCommand::DeactivateWindow(window_id))
             }
           }
 
           CloseRequested => {
-            context_tracker.close_window(window_id);
+            command_queue.push(MultiWindowCommand::CloseWindow(window_id))
           }
 
           _ => {}
@@ -240,16 +236,13 @@ impl MultiWindowProcessor {
       _ => {}
     }
 
-    if *schedule_window_activation != None {
-      context_tracker.activate_window(schedule_window_activation.unwrap());
+    // TODO move this logic to the command queue
+    if let Some(window) = scheduled_window_to_activate {
+      context_tracker.activate_window(*window);
 
-      *schedule_window_activation = None;
+      *scheduled_window_to_activate = None;
       *control_flow = ControlFlow::Wait;
-
-      return true;
     }
-
-    false
   }
 
   fn draw_inactive_visible_windows(
