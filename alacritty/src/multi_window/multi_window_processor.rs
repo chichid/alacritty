@@ -36,8 +36,6 @@ impl MultiWindowProcessor {
       multi_window_tx.clone(),
     )?;
 
-    let mut scheduled_window_to_activate: Option<WindowId> = None;
-
     // Run the process event loop
     window_event_loop.run_return(move |event, event_loop, mut control_flow| {
       let mut command_queue = MultiWindowCommandQueue::default();
@@ -45,22 +43,26 @@ impl MultiWindowProcessor {
       // Activation, Deactivation and Closing of windows
       self.handle_multi_window_events(
         &mut command_queue,
-        &mut window_context_tracker,
         event.clone(),
         &mut control_flow,
-        &mut event_queue,
-        &mut scheduled_window_to_activate,
       );
 
       // PTY Detach for all windows and dirty state for inactive terminals
       self.handle_pty_events(
         &mut command_queue,
-        &config, 
-        &mut window_context_tracker,
         &multi_window_rx
       );
 
-      // If we closed all the windows
+      // Run Window Events immediately
+      command_queue.run(
+        &mut window_context_tracker,
+        &mut config,
+        &event_loop,
+        &event_proxy,
+        multi_window_tx.clone(),
+      );
+
+      // If we closed all the windows, we're done
       if window_context_tracker.is_empty() {
         *control_flow = ControlFlow::Exit;
         return;
@@ -80,6 +82,7 @@ impl MultiWindowProcessor {
         return;
       };
 
+      // TODO move to the command_queue
       // Handle Tab-bar events
       let (need_redraw, skip_processor_run, cursor_icon) = {
         let size_info = active_ctx.processor.lock().get_size_info();
@@ -101,38 +104,40 @@ impl MultiWindowProcessor {
         active_ctx.processor.lock().request_redraw();
       }
 
-      if !skip_processor_run {
-        let mut processor = active_ctx.processor.lock();
-        let active_tab = active_tab.unwrap();
-        let mut notifier = Notifier(active_tab.loop_tx.clone());
-
-        processor.make_current();
-
-        processor.run_iteration(
-          &mut notifier,
-          &mut event_queue,
-          event.clone(),
-          &mut control_flow,
-          active_tab.terminal,
-          &mut config,
-          &mut command_queue,
-        );
-      }
-
       // let active_ctx = window_context_tracker.get_active_window_context();
-      match command_queue.run(
+      command_queue.run(
         &mut window_context_tracker,
-        &active_ctx,
         &mut config,
         &event_loop,
         &event_proxy,
         multi_window_tx.clone(),
-      ) {
-        Ok(_) => {}
-        Err(_err) => {
-          // TODO log error
-        }
-      };
+      );
+
+      // Processor
+      let mut processor = active_ctx.processor.lock();
+      let active_tab = active_tab.unwrap();
+      let mut notifier = Notifier(active_tab.loop_tx.clone());
+
+      processor.make_current();
+
+      processor.run_iteration(
+        &mut notifier,
+        &mut event_queue,
+        event,
+        &mut control_flow,
+        active_tab.terminal,
+        &mut config,
+        &mut command_queue,
+      );
+
+      // let active_ctx = window_context_tracker.get_active_window_context();
+      command_queue.run(
+        &mut window_context_tracker,
+        &mut config,
+        &event_loop,
+        &event_proxy,
+        multi_window_tx.clone(),
+      );
 
       // Handle windows that are visible but not active
       self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
@@ -144,52 +149,32 @@ impl MultiWindowProcessor {
   fn handle_pty_events(
     &self,
     command_queue: &mut MultiWindowCommandQueue,
-    config: &Config,
-    context_tracker: &mut WindowContextTracker,
     receiver: &Receiver<MultiWindowEvent>,
-  ) -> Option<bool> {
+  ) {
     match receiver.try_recv() {
       Ok(result) => {
-        let window_id = result.window_id?;
-        let tab_id = result.tab_id;
-        let ctx = context_tracker.get_context(window_id)?;
+        if result.window_id.is_none() {
+          return;
+        }
 
+        let window_id = result.window_id.unwrap();
+        let tab_id = result.tab_id;
+        
         match result.wrapped_event {
           Event::Exit => {
-            let should_exit = {
-              let mut tab_collection = ctx.term_tab_collection.lock();
-              tab_collection.close_tab(tab_id);
-              tab_collection.is_empty()
-            };
-
-            if should_exit {
-              context_tracker.close_window(window_id);
-            } else {
-              // Redraw the active tab
-              let active_tab = ctx.active_tab()?;
-              let mut terminal = active_tab.terminal.lock();
-              let mut processor = ctx.processor.lock();
-              processor.update_size(&mut terminal, config);
-              processor.request_redraw();
-            }
-
-            return None;
+            command_queue.push(MultiWindowCommand::CloseTab(tab_id));
           }
 
           Event::Title(title) => {
-            ctx.term_tab_collection.lock().tab_mut(tab_id).set_title(title);
-            ctx.processor.lock().request_redraw();
+            command_queue.push(MultiWindowCommand::SetTabTitle(window_id, tab_id, title));
           }
 
           _ => {}
         }
-
-        Some(true)
       }
       Err(err) => {
         // TODO log errors
         // change the result of this function to be Result once that's done
-        Some(true)
       }
     }
   }
@@ -197,11 +182,8 @@ impl MultiWindowProcessor {
   fn handle_multi_window_events(
     &self,
     command_queue: &mut MultiWindowCommandQueue,
-    context_tracker: &mut WindowContextTracker,
     event: GlutinEvent<Event>,
     control_flow: &mut ControlFlow,
-    event_queue: &mut Vec<GlutinEvent<Event>>,
-    scheduled_window_to_activate: &mut Option<WindowId>,
   ) {
     match event {
       // Process events
@@ -216,10 +198,7 @@ impl MultiWindowProcessor {
         match event {
           Focused(is_focused) => {
             if is_focused {
-              // Do not activate the window right away, this causes weird selection behaviour
-              // wait until the mouse_input is received on the next iteration or
-              *scheduled_window_to_activate = Some(window_id);
-              *control_flow = ControlFlow::Poll;
+              command_queue.push(MultiWindowCommand::ActivateWindow(window_id));
             } else {
               command_queue.push(MultiWindowCommand::DeactivateWindow(window_id))
             }
@@ -234,14 +213,6 @@ impl MultiWindowProcessor {
       }
 
       _ => {}
-    }
-
-    // TODO move this logic to the command queue
-    if let Some(window) = scheduled_window_to_activate {
-      context_tracker.activate_window(*window);
-
-      *scheduled_window_to_activate = None;
-      *control_flow = ControlFlow::Wait;
     }
   }
 

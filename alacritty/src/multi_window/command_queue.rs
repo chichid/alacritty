@@ -17,10 +17,11 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 #[derive(Clone, PartialEq)]
 pub enum MultiWindowCommand {
     NewWindow,
-    CreateTab,
     ActivateWindow(WindowId),
     DeactivateWindow(WindowId),
     CloseWindow(WindowId),
+    CreateTab,
+    SetTabTitle(WindowId, usize, String),
     ActivateTab(usize), // tab_id
     CloseCurrentTab,
     CloseTab(usize), // tab_id
@@ -44,7 +45,6 @@ impl MultiWindowCommandQueue {
     pub fn run<'a>(
         &mut self,
         context_tracker: &mut WindowContextTracker,
-        window_ctx: &WindowContext,
         config: &'a mut Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
@@ -66,18 +66,26 @@ impl MultiWindowCommandQueue {
                 }
 
                 MultiWindowCommand::ActivateWindow(window_id) => {
-
+                    context_tracker.activate_window(window_id);
                 }
 
                 MultiWindowCommand::DeactivateWindow(window_id) => {
-
+                    context_tracker.deactivate_window(window_id);
                 }
 
                 MultiWindowCommand::CloseWindow(window_id) => {
-                    
+                    context_tracker.close_window(window_id);
+                }
+
+                MultiWindowCommand::SetTabTitle(window_id, tab_id, title) => {
+                    if let Some(window_ctx) = context_tracker.get_context(window_id) {
+                        window_ctx.term_tab_collection.lock().tab_mut(tab_id).set_title(title);
+                        window_ctx.processor.lock().request_redraw();    
+                    }
                 }
 
                 MultiWindowCommand::CreateTab => {
+                    let window_ctx = context_tracker.get_active_window_context();
                     let size_info = window_ctx.processor.lock().get_size_info();
                     let config = config_arc.lock();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
@@ -93,29 +101,40 @@ impl MultiWindowCommandQueue {
                 }
 
                 MultiWindowCommand::ActivateTab(tab_id) => {
+                    let window_ctx = context_tracker.get_active_window_context();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.activate_tab(tab_id);
                 }
 
                 MultiWindowCommand::CloseCurrentTab => {
+                    let window_ctx = context_tracker.get_active_window_context();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_current_tab();
+
+                    if tab_collection.is_empty() {
+                        context_tracker.close_window(window_ctx.window_id);
+                    }
                 }
 
                 MultiWindowCommand::CloseTab(tab_id) => {
+                    let window_ctx = context_tracker.get_active_window_context();
                     let mut tab_collection = window_ctx.term_tab_collection.lock();
                     tab_collection.close_tab(tab_id);
+
+                    if tab_collection.is_empty() {
+                        context_tracker.close_window(window_ctx.window_id);
+                    }
                 }
             };
         }
 
-        if window_ctx.term_tab_collection.lock().is_empty() {
-            context_tracker.close_window(window_ctx.window_id);
-        } else if need_redraw {
-            let mut terminal = {
+        if need_redraw && context_tracker.has_active_window() {
+            let window_ctx = context_tracker.get_active_window_context();
+
+            let terminal = {
                 let tab_collection = window_ctx.term_tab_collection.lock();
                 let active_tab = tab_collection.active_tab().unwrap();
-                active_tab.terminal.clone()
+                active_tab.terminal
             };
 
             let mut processor = window_ctx.processor.lock();
