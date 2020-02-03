@@ -9,7 +9,6 @@ use glutin::window::WindowId;
 use crate::config::Config;
 use crate::display;
 use crate::multi_window::term_tab::MultiWindowEvent;
-use crate::multi_window::window_context_tracker::WindowContext;
 
 use crate::event::EventProxy;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
@@ -23,7 +22,7 @@ pub enum MultiWindowCommand {
 	CreateTab(WindowId),
 	SetTabTitle(WindowId, usize, String),
 	ActivateTab(WindowId, usize), // tab_id
-	CloseCurrentTab,
+	CloseCurrentTab(WindowId),
 	CloseTab(usize), // tab_id
 }
 
@@ -98,18 +97,21 @@ impl MultiWindowCommandQueue {
 				}
 
 				MultiWindowCommand::ActivateTab(window_id, tab_id) => {
-					let window_ctx = context_tracker.get_active_window_context();
-					let mut tab_collection = window_ctx.term_tab_collection.lock();
-					tab_collection.activate_tab(tab_id);
+					if let Some(window_ctx) = context_tracker.get_context(window_id) {
+						let window_ctx = context_tracker.get_active_window_context();
+						let mut tab_collection = window_ctx.term_tab_collection.lock();
+						tab_collection.activate_tab(tab_id);
+					}
 				}
 
-				MultiWindowCommand::CloseCurrentTab => {
-					let window_ctx = context_tracker.get_active_window_context();
-					let mut tab_collection = window_ctx.term_tab_collection.lock();
-					tab_collection.close_current_tab();
-
-					if tab_collection.is_empty() {
-						context_tracker.close_window(window_ctx.window_id);
+				MultiWindowCommand::CloseCurrentTab(window_id) => {
+					if let Some(window_ctx) = context_tracker.get_context(window_id) {
+						let mut tab_collection = window_ctx.term_tab_collection.lock();
+						tab_collection.close_current_tab();
+	
+						if tab_collection.is_empty() {
+							context_tracker.close_window(window_ctx.window_id);
+						}
 					}
 				}
 

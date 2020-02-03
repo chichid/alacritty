@@ -240,7 +240,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn close_current_tab(&mut self) {
-        self.multi_window_command_queue.push(MultiWindowCommand::CloseCurrentTab);
+        let window_id = self.window.window_id();
+        self.multi_window_command_queue.push(MultiWindowCommand::CloseCurrentTab(window_id));
     }
 
     fn close_tab(&mut self, tab_id: usize) {
