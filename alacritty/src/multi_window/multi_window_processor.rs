@@ -165,7 +165,7 @@ impl MultiWindowProcessor {
         
         match result.wrapped_event {
           Event::Exit => {
-            command_queue.push(MultiWindowCommand::CloseTab(tab_id));
+            command_queue.push(MultiWindowCommand::CloseTab(window_id, tab_id));
           }
 
           Event::Title(title) => {

@@ -15,7 +15,7 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 
 #[derive(Clone, PartialEq)]
 pub enum MultiWindowCommand {
-	NewWindow,
+	CreateWindow,
 	ActivateWindow(WindowId),
 	DeactivateWindow(WindowId),
 	CloseWindow(WindowId),
@@ -23,7 +23,7 @@ pub enum MultiWindowCommand {
 	SetTabTitle(WindowId, usize, String),
 	ActivateTab(WindowId, usize), // tab_id
 	CloseCurrentTab(WindowId),
-	CloseTab(usize), // tab_id
+	CloseTab(WindowId, usize), // tab_id
 }
 
 #[derive(Default)]
@@ -34,7 +34,7 @@ pub struct MultiWindowCommandQueue {
 
 impl MultiWindowCommandQueue {
 	pub fn push(&mut self, command: MultiWindowCommand) {
-		if command == MultiWindowCommand::NewWindow {
+		if command == MultiWindowCommand::CreateWindow {
 			self.has_create = true;
 		}
 
@@ -54,7 +54,7 @@ impl MultiWindowCommandQueue {
 
 		for command in self.queue.drain(..) {
 			match command {
-				MultiWindowCommand::NewWindow => {
+				MultiWindowCommand::CreateWindow => {
 					let mut config = config_arc.lock();
 					context_tracker.create_window_context(
 						&mut config,
@@ -115,14 +115,15 @@ impl MultiWindowCommandQueue {
 					}
 				}
 
-				MultiWindowCommand::CloseTab(tab_id) => {
-					let window_ctx = context_tracker.get_active_window_context();
-					let mut tab_collection = window_ctx.term_tab_collection.lock();
-					tab_collection.close_tab(tab_id);
+				MultiWindowCommand::CloseTab(window_id, tab_id) => {
+					if let Some(window_ctx) = context_tracker.get_context(window_id) {
+						let mut tab_collection = window_ctx.term_tab_collection.lock();
+						tab_collection.close_tab(tab_id);
 
-					if tab_collection.is_empty() {
-						context_tracker.close_window(window_ctx.window_id);
-					}
+						if tab_collection.is_empty() {
+							context_tracker.close_window(window_ctx.window_id);
+						}
+					};
 				}
 			};
 		}

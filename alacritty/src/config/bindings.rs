@@ -177,7 +177,7 @@ pub enum Action {
     SpawnNewInstance,
 
     /// Create a new window in the current Alacritty Process
-    CreateNewWindow,
+    CreateWindow,
 
     /// Create a new tab within the current Alacritty Window
     CreateNewTab,
@@ -453,7 +453,7 @@ fn default_window_navigation_bindings() -> Vec<KeyBinding> {
         KeyBinding;
 
         // Windows
-        Key::N,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CreateNewWindow;
+        Key::N,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CreateWindow;
 
         // Tabs
         Key::T,     [alt: use_alt, ctrl: use_ctrl, logo: use_logo]; Action::CreateNewTab;

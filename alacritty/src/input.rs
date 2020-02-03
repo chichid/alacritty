@@ -156,7 +156,7 @@ impl<T: EventListener> Execute<T> for Action {
             Action::ClearHistory => ctx.terminal_mut().clear_screen(ClearMode::Saved),
             Action::ClearLogNotice => ctx.pop_message(),
             Action::SpawnNewInstance => ctx.spawn_new_instance(),
-            Action::CreateNewWindow => ctx.create_new_window(),
+            Action::CreateWindow => ctx.create_new_window(),
             Action::CreateNewTab => ctx.create_new_tab(),
             Action::ActivateTab(ref t) => ctx.activate_tab(*t),
             Action::CloseCurrentTab => ctx.close_current_tab(),

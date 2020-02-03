@@ -345,7 +345,7 @@ impl TabBarProcessor {
   ) {
     if let Some(pressed_tab) = self.get_tab_from_mouse_position(config, size_info, mouse_position) { 
       if self.is_hover_close_button(size_info) {
-        command_queue.push(MultiWindowCommand::CloseTab(pressed_tab));
+        command_queue.push(MultiWindowCommand::CloseTab(window_id, pressed_tab));
       } else {
         command_queue.push(MultiWindowCommand::ActivateTab(window_id, pressed_tab));
       }

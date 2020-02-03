@@ -226,7 +226,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn create_new_window(&mut self) {
-        self.multi_window_command_queue.push(MultiWindowCommand::NewWindow);
+        self.multi_window_command_queue.push(MultiWindowCommand::CreateWindow);
     }
 
     fn create_new_tab(&mut self) {
@@ -245,7 +245,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn close_tab(&mut self, tab_id: usize) {
-        self.multi_window_command_queue.push(MultiWindowCommand::CloseTab(tab_id));
+        let window_id = self.window.window_id();
+        self.multi_window_command_queue.push(MultiWindowCommand::CloseTab(window_id, tab_id));
     }
 
     fn move_tab(&mut self, from: usize, to: usize) {
