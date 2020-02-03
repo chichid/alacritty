@@ -230,7 +230,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn create_new_tab(&mut self) {
-        self.multi_window_command_queue.push(MultiWindowCommand::CreateTab);
+        let window_id = self.window.window_id();
+        self.multi_window_command_queue.push(MultiWindowCommand::CreateTab(window_id));
     }
 
     fn activate_tab(&mut self, tab_id: usize) {

@@ -114,21 +114,24 @@ impl MultiWindowProcessor {
       );
 
       // Processor
-      let mut processor = active_ctx.processor.lock();
-      let active_tab = active_tab.unwrap();
-      let mut notifier = Notifier(active_tab.loop_tx.clone());
+      {
+        let mut processor = active_ctx.processor.lock();
+        let active_tab = active_tab.unwrap();
+        let mut notifier = Notifier(active_tab.loop_tx.clone());
 
-      processor.make_current();
+        processor.make_current();
 
-      processor.run_iteration(
-        &mut notifier,
-        &mut event_queue,
-        event,
-        &mut control_flow,
-        active_tab.terminal,
-        &mut config,
-        &mut command_queue,
-      );
+        processor.run_iteration(
+          &mut notifier,
+          &mut event_queue,
+          event,
+          &mut control_flow,
+          active_tab.terminal,
+          &mut config,
+          &mut command_queue,
+        );
+      }
+     
 
       // let active_ctx = window_context_tracker.get_active_window_context();
       command_queue.run(
