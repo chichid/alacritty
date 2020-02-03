@@ -1,16 +1,18 @@
-use alacritty_terminal::event::Event;
-use alacritty_terminal::sync::FairMutex;
 use mio_extras::channel::Sender;
-use std::sync::Arc;
 
 use glutin::event_loop::EventLoopWindowTarget;
 use glutin::window::WindowId;
 
-use crate::config::Config;
 use crate::display;
-use crate::multi_window::term_tab::MultiWindowEvent;
+use crate::config::Config;
+use alacritty_terminal::event::Event;
 
 use crate::event::EventProxy;
+
+
+use crate::multi_window::term_tab::MultiWindowEvent;
+use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::window_context_tracker::WindowContext;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 
 #[derive(Clone, PartialEq)]
@@ -44,20 +46,16 @@ impl MultiWindowCommandQueue {
 	pub fn run<'a>(
 		&mut self,
 		context_tracker: &mut WindowContextTracker,
-		config: &'a mut Config,
+		config: &Config,
 		window_event_loop: &EventLoopWindowTarget<Event>,
 		event_proxy: &EventProxy,
 		dispatcher: Sender<MultiWindowEvent>,
 	) -> Result<(), display::Error> {
-		let config_arc = Arc::new(FairMutex::new(config));
-		let need_redraw = !self.queue.is_empty();
-
 		for command in self.queue.drain(..) {
 			match command {
 				MultiWindowCommand::CreateWindow => {
-					let mut config = config_arc.lock();
 					context_tracker.create_window_context(
-						&mut config,
+						&config,
 						window_event_loop,
 						event_proxy,
 						dispatcher.clone(),
@@ -86,21 +84,26 @@ impl MultiWindowCommandQueue {
 				MultiWindowCommand::CreateTab(window_id) => {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
 						let size_info = window_ctx.processor.lock().get_size_info();
-						let config = config_arc.lock();
 						let mut tab_collection = window_ctx.term_tab_collection.lock();
 
-						let tab_id =
-							tab_collection.add_tab(&config, size_info, Some(window_ctx.window_id), &dispatcher);
+						let tab_id = tab_collection.add_tab(
+							&config, 
+							size_info, 
+							Some(window_ctx.window_id), 
+							&dispatcher
+						);
 
 						tab_collection.activate_tab(tab_id);
+
+						update_size(&window_ctx, &tab_collection, config);
 					}
 				}
 
 				MultiWindowCommand::ActivateTab(window_id, tab_id) => {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
-						let window_ctx = context_tracker.get_active_window_context();
 						let mut tab_collection = window_ctx.term_tab_collection.lock();
 						tab_collection.activate_tab(tab_id);
+						window_ctx.processor.lock().request_redraw();
 					}
 				}
 
@@ -108,9 +111,10 @@ impl MultiWindowCommandQueue {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
 						let mut tab_collection = window_ctx.term_tab_collection.lock();
 						tab_collection.close_current_tab();
-	
 						if tab_collection.is_empty() {
 							context_tracker.close_window(window_ctx.window_id);
+						} else {
+							update_size(&window_ctx, &tab_collection, config);
 						}
 					}
 				}
@@ -122,27 +126,21 @@ impl MultiWindowCommandQueue {
 
 						if tab_collection.is_empty() {
 							context_tracker.close_window(window_ctx.window_id);
+						} else {
+							update_size(&window_ctx, &tab_collection, config);
 						}
 					};
 				}
 			};
 		}
 
-		if need_redraw && context_tracker.has_active_window() {
-			let window_ctx = context_tracker.get_active_window_context();
-
-			let terminal = {
-				let tab_collection = window_ctx.term_tab_collection.lock();
-				let active_tab = tab_collection.active_tab().unwrap();
-				active_tab.terminal
-			};
-
-			let mut processor = window_ctx.processor.lock();
-			let config = config_arc.lock();
-			processor.update_size(&mut terminal.lock(), &config);
-			processor.request_redraw();
-		}
-
 		Ok(())
 	}
+}
+
+fn update_size(window_ctx: &WindowContext, tab_collection: &TermTabCollection<EventProxy>, config: &Config) {
+	let active_tab = tab_collection.active_tab().unwrap();
+	let mut processor = window_ctx.processor.lock();
+	processor.update_size(&mut active_tab.terminal.lock(), config);
+	processor.request_redraw();
 }

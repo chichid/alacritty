@@ -109,7 +109,7 @@ impl<'a> WindowContextTracker {
 
     pub(super) fn create_window_context(
         &mut self,
-        config: &'a mut Config,
+        config: &'a Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
@@ -142,7 +142,7 @@ pub struct WindowContext {
 impl WindowContext {
     fn new(
         estimated_dpr: f64,
-        config: &mut Config,
+        config: &Config,
         window_event_loop: &EventLoopWindowTarget<Event>,
         event_proxy: &EventProxy,
         dispatcher: Sender<MultiWindowEvent>,
