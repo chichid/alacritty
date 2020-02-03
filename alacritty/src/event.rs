@@ -235,7 +235,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn activate_tab(&mut self, tab_id: usize) {
-        self.multi_window_command_queue.push(MultiWindowCommand::ActivateTab(tab_id));
+        let window_id = self.window.window_id();
+        self.multi_window_command_queue.push(MultiWindowCommand::ActivateTab(window_id, tab_id));
     }
 
     fn close_current_tab(&mut self) {

@@ -22,7 +22,7 @@ pub enum MultiWindowCommand {
 	CloseWindow(WindowId),
 	CreateTab(WindowId),
 	SetTabTitle(WindowId, usize, String),
-	ActivateTab(usize), // tab_id
+	ActivateTab(WindowId, usize), // tab_id
 	CloseCurrentTab,
 	CloseTab(usize), // tab_id
 }
@@ -97,7 +97,7 @@ impl MultiWindowCommandQueue {
 					}
 				}
 
-				MultiWindowCommand::ActivateTab(tab_id) => {
+				MultiWindowCommand::ActivateTab(window_id, tab_id) => {
 					let window_ctx = context_tracker.get_active_window_context();
 					let mut tab_collection = window_ctx.term_tab_collection.lock();
 					tab_collection.activate_tab(tab_id);

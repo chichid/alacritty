@@ -298,7 +298,13 @@ impl TabBarProcessor {
               if new_mouse_down && !self.is_mouse_down {
                 self.mouse_down_position = None;
                 self.mouse_down_window = Some(window_id);
-                self.handle_mouse_down(&self.current_mouse_position.unwrap(), config, size_info, command_queue);
+                self.handle_mouse_down(
+                  window_id,
+                  &self.current_mouse_position.unwrap(), 
+                  config, 
+                  size_info,
+                  command_queue
+                );
               }
 
               if self.is_mouse_down && state == ElementState::Released {
@@ -331,6 +337,7 @@ impl TabBarProcessor {
 
   fn handle_mouse_down(
     &self,
+    window_id: WindowId,
     mouse_position: &LogicalPosition,
     config: &Config,
     size_info: &SizeInfo,
@@ -340,7 +347,7 @@ impl TabBarProcessor {
       if self.is_hover_close_button(size_info) {
         command_queue.push(MultiWindowCommand::CloseTab(pressed_tab));
       } else {
-        command_queue.push(MultiWindowCommand::ActivateTab(pressed_tab));
+        command_queue.push(MultiWindowCommand::ActivateTab(window_id, pressed_tab));
       }
     }
   }
