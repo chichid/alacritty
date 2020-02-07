@@ -63,7 +63,7 @@ impl<'a> WindowContextTracker {
     }
 
     pub fn get_all_window_contexts(&self) -> Values<WindowId, WindowContext> {
-        self.map.values().clone()
+        self.map.values()
     }
 
     pub fn get_active_window_context(&self) -> WindowContext {
