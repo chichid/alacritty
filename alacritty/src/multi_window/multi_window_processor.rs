@@ -54,13 +54,15 @@ impl MultiWindowProcessor {
       );
 
       // Run Window Events immediately
-      command_queue.run(
+      if let Err(error) = command_queue.run(
         &mut window_context_tracker,
-        &mut config,
+        &config,
         &event_loop,
         &event_proxy,
         multi_window_tx.clone(),
-      );
+      ) {
+        // TODO log error
+      }
 
       // If we closed all the windows, we're done
       if window_context_tracker.is_empty() {
@@ -104,17 +106,18 @@ impl MultiWindowProcessor {
         active_ctx.processor.lock().request_redraw();
       }
 
-      // let active_ctx = window_context_tracker.get_active_window_context();
-      command_queue.run(
+      if let Err(error) = command_queue.run(
         &mut window_context_tracker,
-        &mut config,
+        &config,
         &event_loop,
         &event_proxy,
         multi_window_tx.clone(),
-      );
+      ) {
+        // TODO LOG Error
+      };
 
       // Processor
-      {
+      if !skip_processor_run {
         let mut processor = active_ctx.processor.lock();
         let active_tab = active_tab.unwrap();
         let mut notifier = Notifier(active_tab.loop_tx.clone());
@@ -131,16 +134,16 @@ impl MultiWindowProcessor {
           &mut command_queue,
         );
       }
-     
 
-      // let active_ctx = window_context_tracker.get_active_window_context();
-      command_queue.run(
+      if let Err(error) = command_queue.run(
         &mut window_context_tracker,
-        &mut config,
+        &config,
         &event_loop,
         &event_proxy,
         multi_window_tx.clone(),
-      );
+      ) {
+       // TODO LOG Error 
+      }
 
       // Handle windows that are visible but not active
       self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
