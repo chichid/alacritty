@@ -1,9 +1,9 @@
-use glutin::window::CursorIcon;
 use std::sync::Arc;
 
 use glutin::event::Event as GlutinEvent;
 use glutin::window::WindowId;
 use glutin::dpi::LogicalPosition;
+use glutin::window::CursorIcon;
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
@@ -16,6 +16,7 @@ use alacritty_terminal::renderer::rects::RenderRect;
 
 use crate::event::EventProxy;
 use crate::config::Config;
+use crate::multi_window::window_context_tracker::WindowContextTracker;
 use crate::multi_window::term_tab_collection::TermTabCollection;
 use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 
@@ -71,7 +72,7 @@ impl TabBarState {
     size_info.dpr * config.window.tab_bar_height as f64
   }
 
-  pub (super) fn update(&mut self, size_info: &SizeInfo, config: &Config, tab_collection: &TermTabCollection<EventProxy>) {
+  pub (super) fn update(&mut self, config: &Config, size_info: &SizeInfo, tab_collection: &TermTabCollection<EventProxy>) {
     let tab_count = tab_collection.tab_count();
 
     let is_dragging_ghost_detached = if let Some(dragging_info) = &self.dragging_info {
@@ -242,13 +243,13 @@ impl TabBarProcessor {
     }
   }
 
-  pub(super) fn handle_event(&mut self,
-    tab_collection: &TermTabCollection<EventProxy>,
-    config: &Config, 
-    size_info: &SizeInfo, 
-    event: GlutinEvent<Event>,
+  pub(super) fn handle_event(
+    &mut self,
+    context_tracker: &WindowContextTracker,
     command_queue: &mut MultiWindowCommandQueue,
-  ) -> (bool, bool, Option<CursorIcon>) {
+    config: &Config, 
+    event: GlutinEvent<Event>,
+  ) -> bool {
     let mut tab_state_updated = false;
     let mut is_mouse_event = false;
     let mut is_mouse_up = false;
@@ -261,7 +262,11 @@ impl TabBarProcessor {
 
         match event {
           RedrawRequested => {
-            self.tab_bar_state.lock().update(size_info, config, tab_collection);
+            if let Some(active_ctx) = context_tracker.active_window_context() {
+              let tab_collection = active_ctx.term_tab_collection.lock();
+              let size_info = active_ctx.processor.lock().get_size_info();
+              self.tab_bar_state.lock().update(config, &size_info, &tab_collection);
+            }
           }
 
           CursorMoved { position, .. } => {
@@ -270,7 +275,12 @@ impl TabBarProcessor {
             }
 
             if self.is_mouse_down {
-              is_dragging = self.handle_tab_drag(config, size_info);
+              is_dragging = if let Some(active_ctx) = context_tracker.active_window_context() {
+                let size_info = active_ctx.processor.lock().get_size_info();
+                self.handle_tab_drag(config, &size_info)
+              } else {
+                is_dragging
+              };
 
               if is_dragging {
                 tab_state_updated = true;
@@ -283,7 +293,10 @@ impl TabBarProcessor {
             // TODO update the current window based on the position, cursorEntered and 
             // cursorLeft are no help here
             if !is_dragging {
-              tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
+              if let Some(active_ctx) = context_tracker.active_window_context() {
+                let size_info = active_ctx.processor.lock().get_size_info();
+                tab_state_updated = self.handle_hover(config, &size_info, &mut cursor_icon);
+              }
             }
             
             is_mouse_event = true;
@@ -298,13 +311,18 @@ impl TabBarProcessor {
               if new_mouse_down && !self.is_mouse_down {
                 self.mouse_down_position = None;
                 self.mouse_down_window = Some(window_id);
-                self.handle_mouse_down(
-                  window_id,
-                  &self.current_mouse_position.unwrap(), 
-                  config, 
-                  size_info,
-                  command_queue
-                );
+
+                if let Some(active_ctx) = context_tracker.active_window_context() {
+                  let size_info = active_ctx.processor.lock().get_size_info();
+
+                  self.handle_mouse_down(
+                    window_id,
+                    &self.current_mouse_position.unwrap(), 
+                    config, 
+                    &size_info,
+                    command_queue
+                  );
+                }
               }
 
               if self.is_mouse_down && state == ElementState::Released {
@@ -315,7 +333,11 @@ impl TabBarProcessor {
               new_mouse_down
             };
 
-            tab_state_updated = self.handle_hover(config, size_info, &mut cursor_icon);
+            if let Some(active_ctx) = context_tracker.active_window_context() {
+              let size_info = active_ctx.processor.lock().get_size_info();
+              tab_state_updated = self.handle_hover(config, &size_info, &mut cursor_icon);
+            }
+
             is_mouse_event = true;
           }
 
@@ -323,16 +345,24 @@ impl TabBarProcessor {
         }
     }
 
-    let need_redraw = tab_state_updated || is_dragging || is_mouse_up;
+    // Set the cursor
+    if let Some(active_ctx) = context_tracker.active_window_context() {
+      if tab_state_updated || is_dragging || is_mouse_up {
+        active_ctx.processor.lock().window_mut().request_redraw();
+      }
 
-    let skip_processor_run = if is_mouse_event && self.current_mouse_position.is_some() {
+      if let Some(cursor) = cursor_icon {
+        active_ctx.processor.lock().window_mut().set_mouse_cursor(cursor);
+      }
+    }
+
+    // If it's a mouse event run the event
+    if is_mouse_event && self.current_mouse_position.is_some() {
       let tab_count = self.tab_bar_state.lock().tab_count();
       tab_count > 1 && self.current_mouse_position.unwrap().y < config.window.tab_bar_height as f64
     } else {
       false
-    };
-
-    (need_redraw, skip_processor_run, cursor_icon)
+    }
   }
 
   fn handle_mouse_down(

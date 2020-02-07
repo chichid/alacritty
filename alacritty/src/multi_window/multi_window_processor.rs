@@ -77,72 +77,56 @@ impl MultiWindowProcessor {
         return;
       }
 
-      let active_ctx = window_context_tracker.get_active_window_context();
-      let active_tab = active_ctx.active_tab();
-      if active_tab.is_none() {
-        self.draw_inactive_visible_windows(&config, &mut window_context_tracker);
-        return;
-      };
-
       // TODO move to the command_queue
       // Handle Tab-bar events
-      let (need_redraw, skip_processor_run, cursor_icon) = {
-        let size_info = active_ctx.processor.lock().get_size_info();
-      
-        active_ctx.tab_bar_processor.lock().handle_event(
-          &active_ctx.term_tab_collection.lock(),
+      if let Some(active_ctx) = window_context_tracker.active_window_context() {
+        let is_tab_bar_event = active_ctx.tab_bar_processor.lock().handle_event(
+          &window_context_tracker,
+          &mut command_queue,
           &config,
-          &size_info,
           event.clone(),
-          &mut command_queue,
-        )
-      };
-
-      if let Some(cursor_icon) = cursor_icon {
-        active_ctx.processor.lock().window_mut().set_mouse_cursor(cursor_icon);
-      }
-
-      if need_redraw {
-        active_ctx.processor.lock().request_redraw();
-      }
-
-      if let Err(error) = command_queue.run(
-        &mut window_context_tracker,
-        &config,
-        &event_loop,
-        &event_proxy,
-        multi_window_tx.clone(),
-      ) {
-        // TODO LOG Error
-      };
-
-      // Processor
-      if !skip_processor_run {
-        let mut processor = active_ctx.processor.lock();
-        let active_tab = active_tab.unwrap();
-        let mut notifier = Notifier(active_tab.loop_tx.clone());
-
-        processor.make_current();
-
-        processor.run_iteration(
-          &mut notifier,
-          &mut event_queue,
-          event,
-          &mut control_flow,
-          active_tab.terminal,
-          &mut config,
-          &mut command_queue,
         );
-      }
 
-      if let Err(error) = command_queue.run(
-        &mut window_context_tracker,
-        &config,
-        &event_loop,
-        &event_proxy,
-        multi_window_tx.clone(),
-      ) {
-       // TODO LOG Error 
+        if let Err(error) = command_queue.run(
+          &mut window_context_tracker,
+          &config,
+          &event_loop,
+          &event_proxy,
+          multi_window_tx.clone(),
+        ) {
+          // TODO LOG Error
+        };
+         
+        // Processor
+        if !is_tab_bar_event {
+          let mut processor = active_ctx.processor.lock();
+          
+          if let Some(active_tab) = active_ctx.active_tab() {
+            let mut notifier = Notifier(active_tab.loop_tx.clone());
+
+            processor.make_current();
+
+            processor.run_iteration(
+              &mut notifier,
+              &mut event_queue,
+              event,
+              &mut control_flow,
+              active_tab.terminal,
+              &mut config,
+              &mut command_queue,
+            );
+          }
+        }
+
+        if let Err(error) = command_queue.run(
+          &mut window_context_tracker,
+          &config,
+          &event_loop,
+          &event_proxy,
+          multi_window_tx.clone(),
+        ) {
+        // TODO LOG Error 
+        }
       }
 
       // Handle windows that are visible but not active
@@ -227,17 +211,15 @@ impl MultiWindowProcessor {
     config: &Config,
     context_tracker: &mut WindowContextTracker,
   ) {
-    let has_active_display = context_tracker.has_active_window();
-
-    let active_window_id = if has_active_display {
-      Some(context_tracker.get_active_window_context().window_id)
+    let active_window_id = if let Some(active_ctx) = context_tracker.active_window_context() {
+      Some(active_ctx.window_id)
     } else {
       None
     };
 
     for inactive_ctx in context_tracker.get_all_window_contexts() {
       // TODO check if the window related to the context is maximized
-      if !has_active_display || inactive_ctx.window_id != active_window_id.unwrap() {
+      if active_window_id.is_none() || inactive_ctx.window_id != active_window_id.unwrap() {
         let tab = inactive_ctx.active_tab().unwrap();
         if tab.terminal.lock().dirty {
           tab.terminal.lock().dirty = false;

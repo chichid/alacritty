@@ -58,29 +58,28 @@ impl<'a> WindowContextTracker {
         self.map.is_empty()
     }
 
-    pub fn has_active_window(&mut self) -> bool {
-        self.active_window_id != None
-    }
-
     pub fn get_all_window_contexts(&self) -> Values<WindowId, WindowContext> {
         self.map.values()
     }
 
-    pub fn get_active_window_context(&self) -> WindowContext {
-        if self.active_window_id == None { 
-            panic!("window_context_tracker get_active_window_context called on empty collection") 
-        }
+    pub fn has_active_window(&mut self) -> bool {
+        self.active_window_id != None
+    }
 
-        let window_id = &self.active_window_id.unwrap();
-        self.map[window_id].clone()
+    pub fn active_window_context(&self) -> Option<WindowContext> {
+        if self.active_window_id == None { 
+            None
+        } else {
+            Some(self.map[&self.active_window_id.unwrap()].clone())
+        }
     }
 
     pub fn get_context(&self, window_id: WindowId) -> Option<WindowContext> {
         if self.map.contains_key(&window_id) {
-            return Some(self.map[&window_id].clone());
+            Some(self.map[&window_id].clone())
+        } else {
+            None
         }
-
-        None
     }
 
     pub(super) fn activate_window(&mut self, window_id: WindowId) {
@@ -188,7 +187,7 @@ impl WindowContext {
 
         // Sync the size of the display and the terminal
         processor.update_size(&mut active_tab.terminal.lock(), config);
-        tab_bar_state_arc.lock().update(&size_info, config, &term_tab_collection.lock());
+        tab_bar_state_arc.lock().update(config, &size_info, &term_tab_collection.lock());
         
         Ok(WindowContext {
             window_id,
