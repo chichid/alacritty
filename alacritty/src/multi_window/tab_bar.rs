@@ -473,7 +473,7 @@ impl TabBarRenderer {
     let mut masks = Vec::new();
 
     for i in 0..tab_bar_state.tab_count() {
-      self.render_background(&tab_bar_state.tab_state(i), &mut backgrounds);
+      self.render_background(&mut backgrounds, &tab_bar_state.tab_state(i), size_info);
     }
 
     renderer.draw_rects(&size_info, backgrounds);
@@ -491,7 +491,7 @@ impl TabBarRenderer {
     if let Some(dragged_tab) = &tab_bar_state.dragged_tab {
       let mut dragged_tab_background = Vec::new();
       let mut dragged_tab_masks = Vec::new();
-      self.render_background(dragged_tab, &mut dragged_tab_background);
+      self.render_background(&mut dragged_tab_background, dragged_tab, size_info);
 
       renderer.draw_rects(&size_info, dragged_tab_background);
       self.render_title(dragged_tab, &mut dragged_tab_masks, &size_info, renderer, config, &metrics, glyph_cache);
@@ -499,7 +499,7 @@ impl TabBarRenderer {
     }
   }
 
-  fn render_background(&self, tab_state: &TabState, backgrounds: &mut Vec<RenderRect>) {
+  fn render_background(&self, backgrounds: &mut Vec<RenderRect>, tab_state: &TabState, size_info: &SizeInfo) {
     let TabState { x, y, width, height, active, hovered, .. } = *tab_state; 
 
     // Border
@@ -515,7 +515,7 @@ impl TabBarRenderer {
     backgrounds.push(border);
     
     // Content
-    let border_width = self.border_width();
+    let border_width = self.border_width(size_info.dpr);
 
     let fill = RenderRect::new(
       x + border_width,
@@ -529,9 +529,9 @@ impl TabBarRenderer {
     backgrounds.push(fill);
   }
 
-  fn border_width(&self) -> f32 {
+  fn border_width(&self, dpr: f64) -> f32 {
     // TODO get from config or theme
-    0.7
+    0.35 * dpr as f32
   }
 
   fn render_title(&self, 
@@ -544,7 +544,7 @@ impl TabBarRenderer {
     glyph_cache: &mut GlyphCache
   ) {
     let TabState { x, y, width, height, active, hovered, title, .. } = tab_state;
-    let border_width = self.border_width();
+    let border_width = self.border_width(size_info.dpr);
     
     let cell_width = metrics.average_advance.floor().max(1.) as f32;
     let cell_height = metrics.line_height.floor().max(1.) as f32;
