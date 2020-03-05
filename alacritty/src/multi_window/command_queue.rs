@@ -18,13 +18,14 @@ use crate::multi_window::window_context_tracker::WindowContextTracker;
 #[derive(Clone, PartialEq)]
 pub enum MultiWindowCommand {
 	CreateWindow,
-	ActivateWindow(WindowId),
-	DeactivateWindow(WindowId),
-	CloseWindow(WindowId),
-	CreateTab(WindowId),
-	SetTabTitle(WindowId, usize, String),
+	ActivateWindow(WindowId), // WindowId
+	DeactivateWindow(WindowId), // WindowId
+	CloseWindow(WindowId), // WindowId
+	CreateTab(WindowId), // WindowId
+	MoveTab(WindowId, usize, usize), // WindowId, tab_id, new_index
+	SetTabTitle(WindowId, usize, String), // WindowId, tab_id, new title
 	ActivateTab(WindowId, usize), // tab_id
-	CloseCurrentTab(WindowId),
+	CloseCurrentTab(WindowId), // WindowId
 	CloseTab(WindowId, usize), // tab_id
 }
 
@@ -43,6 +44,7 @@ impl MultiWindowCommandQueue {
 		self.queue.push(command);
 	}
 
+	// TODO reduce function complexity
 	pub fn run<'a>(
 		&mut self,
 		context_tracker: &mut WindowContextTracker,
@@ -97,6 +99,10 @@ impl MultiWindowCommandQueue {
 
 						update_size(&window_ctx, &tab_collection, config);
 					}
+				}
+
+				MultiWindowCommand::MoveTab(window_id, tab_id, new_tab_id) => {
+					println!("Move tab called on window {:?} from {} to {}", window_id, tab_id, new_tab_id);
 				}
 
 				MultiWindowCommand::ActivateTab(window_id, tab_id) => {

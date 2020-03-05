@@ -326,7 +326,7 @@ impl TabBarProcessor {
               }
 
               if self.is_mouse_down && state == ElementState::Released {
-                self.handle_mouse_up();
+                self.handle_mouse_up(window_id, command_queue);
                 is_mouse_up = true;
               }
               
@@ -382,7 +382,19 @@ impl TabBarProcessor {
     }
   }
 
-  fn handle_mouse_up(&self) -> bool {
+  fn handle_mouse_up(
+    &self,
+    window_id: WindowId,
+    command_queue: &mut MultiWindowCommandQueue
+  ) -> bool {
+    if let Some(DraggingInfo{tab_id, ghost_tab_index, ..}) = &self.tab_bar_state.lock().dragging_info {
+      if let Some(ghost_tab_index) = ghost_tab_index {
+        if *ghost_tab_index != *tab_id {
+          command_queue.push(MultiWindowCommand::MoveTab(window_id, *tab_id, *ghost_tab_index))
+        }
+      }
+    }
+
     self.tab_bar_state.lock().clear_dragging_info()
   }
 
