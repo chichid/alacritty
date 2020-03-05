@@ -390,7 +390,8 @@ impl TabBarProcessor {
     if let Some(DraggingInfo{tab_id, ghost_tab_index, ..}) = &self.tab_bar_state.lock().dragging_info {
       if let Some(ghost_tab_index) = ghost_tab_index {
         if *ghost_tab_index != *tab_id {
-          command_queue.push(MultiWindowCommand::MoveTab(window_id, *tab_id, *ghost_tab_index))
+          command_queue.push(MultiWindowCommand::MoveTab(window_id, *tab_id, *ghost_tab_index));
+          command_queue.push(MultiWindowCommand::ActivateTab(window_id, *ghost_tab_index));
         }
       }
     }

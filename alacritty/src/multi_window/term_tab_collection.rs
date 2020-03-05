@@ -66,7 +66,8 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.tab_collection.is_empty()
     }
 
-    pub(super) fn add_tab(&mut self,
+    pub(super) fn add_tab(
+        &mut self,
         config: &Config,
         size_info: SizeInfo,
         window_id: Option<WindowId>, 
@@ -77,6 +78,19 @@ impl<'a, T: 'static + Clone + Send + EventListener> TermTabCollection<T> {
         self.tab_collection.push(new_tab);
 
         tab_id
+    }
+
+    pub(super) fn move_tab(&mut self, tab_id: usize, new_tab_id: usize) {
+        let tab = self.tab_collection.remove(tab_id);
+        self.tab_collection.insert(new_tab_id, tab);
+
+        for tid in 0..self.tab_collection.len() {
+            if self.tab_collection[tid].tab_id == self.active_tab {
+                self.active_tab = tid;
+            }
+
+            self.tab_collection[tid].tab_id = tid;
+        }
     }
 
     pub(super) fn activate_tab(&mut self, tab_id: usize) {

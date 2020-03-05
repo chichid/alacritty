@@ -103,6 +103,10 @@ impl MultiWindowCommandQueue {
 
 				MultiWindowCommand::MoveTab(window_id, tab_id, new_tab_id) => {
 					println!("Move tab called on window {:?} from {} to {}", window_id, tab_id, new_tab_id);
+					if let Some(window_ctx) = context_tracker.get_context(window_id) {
+						let mut tab_collection = window_ctx.term_tab_collection.lock();
+						tab_collection.move_tab(tab_id, new_tab_id);
+					}
 				}
 
 				MultiWindowCommand::ActivateTab(window_id, tab_id) => {
