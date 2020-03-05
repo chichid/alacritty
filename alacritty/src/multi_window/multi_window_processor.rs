@@ -77,9 +77,9 @@ impl MultiWindowProcessor {
         return;
       }
 
-      // TODO move to the command_queue
-      // Handle Tab-bar events
+      // Run event processors if there is an active context
       if let Some(active_ctx) = window_context_tracker.active_window_context() {
+        // Run tab-bar event processors
         let is_tab_bar_event = active_ctx.tab_bar_processor.lock().handle_event(
           &window_context_tracker,
           &mut command_queue,
@@ -97,7 +97,7 @@ impl MultiWindowProcessor {
           // TODO LOG Error
         };
          
-        // Processor
+        // Run the terminal processor if the event is not a tab_bar event
         if !is_tab_bar_event {
           let mut processor = active_ctx.processor.lock();
           
