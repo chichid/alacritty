@@ -57,7 +57,7 @@ mod multi_window;
 use crate::cli::Options;
 use crate::config::monitor::Monitor;
 use crate::config::Config;
-use crate::event::{EventProxy, Processor};
+use crate::event::EventProxy;
 use crate::multi_window::multi_window_processor::MultiWindowProcessor;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 

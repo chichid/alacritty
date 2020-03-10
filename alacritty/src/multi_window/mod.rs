@@ -1,7 +1,7 @@
-pub mod command_queue;
-pub mod glutin_context_tracker;
+// TODO more encapsulation here is needed, must expose a Facade to simplify calling the multi_window module
 pub mod multi_window_processor;
-pub mod term_tab;
-pub mod window_context_tracker;
 pub mod tab_bar;
-mod term_tab_collection;
+pub mod command_queue;
+pub mod window_context_tracker;
+pub mod glutin_context_tracker;
+mod term_tab;

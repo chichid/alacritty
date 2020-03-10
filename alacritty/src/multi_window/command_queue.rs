@@ -10,8 +10,7 @@ use alacritty_terminal::event::Event;
 use crate::event::EventProxy;
 
 
-use crate::multi_window::term_tab::MultiWindowEvent;
-use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::term_tab::{ MultiWindowEvent, TermTabCollection };
 use crate::multi_window::window_context_tracker::WindowContext;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
 

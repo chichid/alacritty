@@ -1,10 +1,8 @@
 use std::sync::Arc;
-
 use glutin::event::Event as GlutinEvent;
 use glutin::window::WindowId;
 use glutin::dpi::LogicalPosition;
 use glutin::window::CursorIcon;
-
 use alacritty_terminal::event::Event;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::index::Line;
@@ -17,7 +15,7 @@ use alacritty_terminal::renderer::rects::RenderRect;
 use crate::event::EventProxy;
 use crate::config::Config;
 use crate::multi_window::window_context_tracker::WindowContextTracker;
-use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::term_tab::TermTabCollection;
 use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 
 const CLOSE_ICON_PADDING: f32 = 10.0;
@@ -577,6 +575,7 @@ impl TabBarRenderer {
     0.35 * dpr as f32
   }
 
+  // TODO too many arguments
   fn render_title(&self, 
     tab_state: &TabState,
     masks: &mut Vec<RenderRect>, 

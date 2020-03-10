@@ -1,7 +1,5 @@
-use alacritty_terminal::event_loop::Notifier;
-use glutin::window::WindowId;
 use mio_extras::channel::{self, Receiver};
-
+use alacritty_terminal::event_loop::Notifier;
 use alacritty_terminal::event::Event;
 use glutin::event::Event as GlutinEvent;
 use glutin::event_loop::ControlFlow;

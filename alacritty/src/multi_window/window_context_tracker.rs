@@ -18,8 +18,7 @@ use crate::display::Error;
 use crate::event::EventProxy;
 use crate::event::Processor;
 
-use crate::multi_window::term_tab::TermTab;
-use crate::multi_window::term_tab_collection::TermTabCollection;
+use crate::multi_window::term_tab::{ TermTab, TermTabCollection };
 use crate::multi_window::term_tab::MultiWindowEvent;
 use crate::multi_window::tab_bar::{ TabBarState, TabBarProcessor, TabBarRenderer };
 
