@@ -168,7 +168,6 @@ impl WindowContext {
         //
         // The display manages a window and can draw the terminal.
         let display = Display::new(config, estimated_dpr, window_event_loop, tab_bar_renderer)?;
-        let size_info = display.size_info;
         let window_id = display.window.window_id();
         active_tab.set_window_id(window_id);
         info!("PTY Dimensions: {:?} x {:?}", display.size_info.lines(), display.size_info.cols());
@@ -187,8 +186,7 @@ impl WindowContext {
 
         // Sync the size of the display and the terminal
         processor.update_size(&mut active_tab.terminal.lock(), config);
-        tab_bar_state_arc.lock().update(config, &size_info, &term_tab_collection.lock());
-        
+
         Ok(WindowContext {
             window_id,
             processor: Arc::new(FairMutex::new(processor)),
