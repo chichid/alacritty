@@ -78,7 +78,12 @@ impl MultiWindowCommandQueue {
 
 				MultiWindowCommand::SetTabTitle(window_id, tab_id, title) => {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
-						window_ctx.term_tab_collection.lock().tab_mut(tab_id).set_title(title);
+						let mut tab_collection = window_ctx.term_tab_collection.lock();
+						tab_collection.tab_mut(tab_id).set_title(title);
+
+						let size_info = window_ctx.processor.lock().get_size_info();
+						window_ctx.tab_bar_processor.lock().update_tab_bar(config, &size_info, &tab_collection);
+
 						window_ctx.processor.lock().request_redraw();
 					}
 				}
@@ -105,6 +110,9 @@ impl MultiWindowCommandQueue {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
 						let mut tab_collection = window_ctx.term_tab_collection.lock();
 						tab_collection.move_tab(tab_id, new_tab_id);
+
+						let size_info = window_ctx.processor.lock().get_size_info();
+						window_ctx.tab_bar_processor.lock().update_tab_bar(config, &size_info, &tab_collection);
 					}
 				}
 
@@ -112,6 +120,10 @@ impl MultiWindowCommandQueue {
 					if let Some(window_ctx) = context_tracker.get_context(window_id) {
 						let mut tab_collection = window_ctx.term_tab_collection.lock();
 						tab_collection.activate_tab(tab_id);
+
+						let size_info = window_ctx.processor.lock().get_size_info();
+						window_ctx.tab_bar_processor.lock().update_tab_bar(config, &size_info, &tab_collection);
+
 						window_ctx.processor.lock().request_redraw();
 					}
 				}
@@ -150,6 +162,8 @@ impl MultiWindowCommandQueue {
 fn update_size(window_ctx: &WindowContext, tab_collection: &TermTabCollection<EventProxy>, config: &Config) {
 	let active_tab = tab_collection.active_tab().unwrap();
 	let mut processor = window_ctx.processor.lock();
+	let size_info = processor.get_size_info();
+	window_ctx.tab_bar_processor.lock().update_tab_bar(config, &size_info, tab_collection);
 	processor.update_size(&mut active_tab.terminal.lock(), config);
 	processor.request_redraw();
 }
