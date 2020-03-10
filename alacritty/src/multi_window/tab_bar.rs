@@ -262,6 +262,7 @@ impl TabBarProcessor {
 
         match event {
           RedrawRequested => {
+            // TODO optimization, the tab bar state should be updated if necessary
             if let Some(active_ctx) = context_tracker.active_window_context() {
               let tab_collection = active_ctx.term_tab_collection.lock();
               let size_info = active_ctx.processor.lock().get_size_info();
