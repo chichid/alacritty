@@ -11,8 +11,8 @@ use crate::event::EventProxy;
 
 
 use crate::multi_window::term_tab::{ MultiWindowEvent, TermTabCollection };
-use crate::multi_window::window_context_tracker::WindowContext;
-use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::multi_window::window_context::WindowContext;
+use crate::multi_window::window_context::WindowContextTracker;
 
 #[derive(Clone, PartialEq)]
 pub enum MultiWindowCommand {

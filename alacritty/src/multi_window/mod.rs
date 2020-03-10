@@ -2,6 +2,6 @@
 pub mod multi_window_processor;
 pub mod tab_bar;
 pub mod command_queue;
-pub mod window_context_tracker;
+pub mod window_context;
 pub mod glutin_context_tracker;
 mod term_tab;

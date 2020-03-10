@@ -11,7 +11,7 @@ use crate::display::Error as DisplayError;
 use crate::event::EventProxy;
 use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 use crate::multi_window::term_tab::MultiWindowEvent;
-use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::multi_window::window_context::WindowContextTracker;
 
 #[derive(Default)]
 pub struct MultiWindowProcessor {}

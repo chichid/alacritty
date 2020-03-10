@@ -14,7 +14,7 @@ use alacritty_terminal::renderer::rects::RenderRect;
 
 use crate::event::EventProxy;
 use crate::config::Config;
-use crate::multi_window::window_context_tracker::WindowContextTracker;
+use crate::multi_window::window_context::WindowContextTracker;
 use crate::multi_window::term_tab::TermTabCollection;
 use crate::multi_window::command_queue::{MultiWindowCommandQueue, MultiWindowCommand};
 
